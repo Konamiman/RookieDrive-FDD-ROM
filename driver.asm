@@ -1,5 +1,7 @@
+; Base code for the FDD driver for Rookie Drive
+; By Konamiman, 2018
 ; -----------------------------------------------------------------------------
-; DSK2ROM - ASCII8/KonamiSCC megarom driver
+; based on DSK2ROM - ASCII8/KonamiSCC megarom driver
 ; (C)2007 Vincent van Dam (vincentd@erg.verweg.com)
 ; -----------------------------------------------------------------------------
 ; based on the template by Arjen Zeilemaker (C)1992-2005 Ultrasoft.
@@ -8,6 +10,9 @@
 ; This driver requires a patched BDOS kernel; without the patched kernel it
 ; doesn't make much sense.
 ; -----------------------------------------------------------------------------
+
+; Note that INIHRD, DSKIO and DSKCHG are in separate files
+
 
 ; symbols which can be used from the kernel
 
@@ -63,9 +68,6 @@
 ; 14	insufficient memory
 ; 16	other error
 
-MSXVER:		equ     $002D
-WRTVDP:		equ     $0047
-		
 ; -----------------------------------------------------------------------------
 ; some constants
 ; -----------------------------------------------------------------------------
@@ -73,21 +75,6 @@ WRTVDP:		equ     $0047
 MYSIZE:		equ	0		; Size of environment
 SECLEN:		equ	512		; Size of biggest sector
 
-; -----------------------------------------------------------------------------
-; INIHRD
-; -----------------------------------------------------------------------------
-; Input:	None
-; Output:	None
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-INIHRD:
-	ld   a,(MSXVER)
-	or   a
-	ret  z
-	call INIHRD_videomode
-	call INIHRD_palette
-	ret
 
 ; -----------------------------------------------------------------------------
 ; INIHRD_BASIC
@@ -113,38 +100,7 @@ INIHRD_BASIC:
 	pop  hl
 	ret
 
-; set ntsc/pal
-	
-INIHRD_videomode:	
-	ld   a,(VIDEO_MODE)
-	or   a
-	ret  z
-	dec  a
-	jr   z,INIHRD_pal
-INIHRD_ntsc:
-	ld   bc,$0009
-	jp   WRTVDP
-INIHRD_pal:
-	ld   bc,$0209
-	jp   WRTVDP
 
-; set msx1 palette
-
-INIHRD_palette:	
-	ld   a,(MSX1PALETTE)
-	or   a
-	ret  z
-	ld   bc,$0010
-	call WRTVDP
-	ld   hl,INIHRD_palette0
-	ld   bc,$209a
-	otir
-	ret
-INIHRD_palette0:	
-	dw $000,$000,$612,$634,$227,$337,$262,$637
-	dw $271,$373,$562,$663,$512,$365,$666,$777
-
-	
 ; -----------------------------------------------------------------------------
 ; DRIVES
 ; -----------------------------------------------------------------------------
@@ -162,6 +118,7 @@ DRIVES:
 	ld   l,1
 	ret
 
+
 ; -----------------------------------------------------------------------------
 ; INIENV
 ; -----------------------------------------------------------------------------
@@ -174,33 +131,7 @@ DRIVES:
 
 INIENV:
 	ret
-INTHAND:	
-	jp   PRVINT
 
-; -----------------------------------------------------------------------------
-; DSKCHG
-; -----------------------------------------------------------------------------
-; Input: 	A	Drivenumber
-; 		B	0
-; 		C	Media descriptor
-; 		HL	pointer to DPB
-; Output:	F	Cx set for error
-;			Cx reset for ok
-;		A	if error, errorcode
-;		B	if no error, disk change status
-;			01 disk unchanged
-;			00 unknown
-;			FF disk changed
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; Remark:	DOS1 kernel expects the DPB updated when disk change status is
-;               unknown or changed DOS2 kernel does not care if the DPB is
-;               updated or not		
-; -----------------------------------------------------------------------------
-
-DSKCHG:
-	scf
-	ld   a,12
-	ret
 
 ; -----------------------------------------------------------------------------
 ; GETDPB
@@ -415,43 +346,3 @@ OEMSTA:
 
 DSKSTP:
 	ret
-
-; -----------------------------------------------------------------------------
-; DSKIO
-; -----------------------------------------------------------------------------
-; Input: 	A	Drivenumber
-;		F	Cx reset for read
-;			Cx set for write
-; 		B	number of sectors
-; 		C	Media descriptor
-;		DE	logical sectornumber
-; 		HL	transferaddress
-; Output:	F	Cx set for error
-;			Cx reset for ok
-;		A	if error, errorcode
-;		B	if error, remaining sectors
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-DSKIO:
-	scf
-	ld	a,12
-	ret
-
-; -----------------------------------------------------------------------------
-; configuration part
-; -----------------------------------------------------------------------------
-
-	defs 07F00H-$,0
-VIDEO_MODE:		db   0	  ; 0 = nothing, 1 = pal, 2 = ntsc.
-MSX1PALETTE:		db   0	  ; 0 = normal, 1 = force msx1 palette
-HOSTILE_TAKEOVER:	db   1	  ; 0 = no, 1 = make this an exclusive diskrom
-
-; -----------------------------------------------------------------------------
-; fill it up, leave signature.
-; -----------------------------------------------------------------------------
-
-	defs 07FE0H-$,0
-	;;  0123456789abcdef
-	db "DSK2ROM 0.80    "
-	db "by joyrex 2007. "

@@ -8761,15 +8761,3 @@ PA4034:	push	ix
 	and	a			; flag NZ
 	ret
 	;; xxxx ----------
-	
-; DRIVER section starts here
-
-DSKDRV:
-
-	INCLUDE	"driver.asm"
-
-	DEFS	08000H-$,0
-
-	end
-
-
