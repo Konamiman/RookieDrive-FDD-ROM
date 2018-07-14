@@ -4360,8 +4360,8 @@ A578E:
 
 A57A9:	ld	hl,0F380H+MYSIZE
 	;; xxxx ------------------
-	ld	de,(DECOMPRESS_BUFFER_SIZE)
-	add	hl,de
+	ds	4	;ld	de,(DECOMPRESS_BUFFER_SIZE)
+	ds	1	;add	hl,de
 	;; xxxx ------------------
 	ld	de,XF1C9
 	and	a
@@ -4433,10 +4433,10 @@ A5812:	add	a,(hl)
 	ret	nc			; yep, no more drives!
 	ld	hl,MYSIZE		; number of bytes for workarea driver
 	;; xxxx ------------------
-	push    de
-	ld	de,(DECOMPRESS_BUFFER_SIZE)
-	add	hl,de
-	pop     de
+	ds	1	;push    de
+	ds	4	;ld	de,(DECOMPRESS_BUFFER_SIZE)
+	ds	1	;add	hl,de
+	ds	1	;pop     de
 	;; xxxx ------------------
 	call	A5EE8			; allocate memory (adjust BASIC areapointers)
 	ret	c			; failed, quit
@@ -4777,7 +4777,7 @@ J5A36:	LD	(HL),A
 	LD	HL,I63A1
 	LDIR				; install ENAKRN and ENARAM
 	;; xxxx -----
-	CALL    PATCH_KERNEL_BANKSWITCH
+	ds	3	;CALL    PATCH_KERNEL_BANKSWITCH
 	;; xxxx -----	
 	LD	BC,360			; size of the slotswitching routines
 	CALL	A5EAD			; allocate MSXDOS memory (halt when error)
