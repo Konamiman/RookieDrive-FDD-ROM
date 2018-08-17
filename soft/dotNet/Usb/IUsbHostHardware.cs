@@ -4,9 +4,9 @@
     {
         void HardwareReset();
 
-        bool DeviceIsConnected();
+        UsbDeviceConnectionStatus CheckConnectionStatus();
 
-        UsbTransferResult ExecuteControlTransfer(byte[] commandBytes, byte[] dataBuffer, int dataBufferIndex, int deviceAddress, int endpointPacketSize, int endpointNumber = 0);
+        UsbTransferResult ExecuteControlTransfer(UsbSetupPacket setupPacket, byte[] dataBuffer, int dataBufferIndex, int deviceAddress, int endpointPacketSize, int endpointNumber = 0);
 
         UsbTransferResult ExecuteDataInTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber, int endpointPacketSize, int toggleBit);
 
