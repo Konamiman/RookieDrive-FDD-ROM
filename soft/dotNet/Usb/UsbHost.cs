@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 
 namespace Konamiman.RookieDrive.Usb
 {
@@ -55,6 +56,8 @@ namespace Konamiman.RookieDrive.Usb
                 connectedDevice = null;
             else if (hwDeviceStatus == UsbDeviceConnectionStatus.Changed)
                 InitializeDevice();
+            else if (hwDeviceStatus == UsbDeviceConnectionStatus.Error)
+                throw new UsbTransferException("Error on USB bus reset", UsbPacketResult.OtherError);
         }
 
         private UsbPacketResult InitializeDevice()
@@ -68,12 +71,9 @@ namespace Konamiman.RookieDrive.Usb
 
             getDescriptorSetupPacket.wValueH = UsbDescriptorType.DEVICE;
             getDescriptorSetupPacket.wLength = endpointZeroMaxPacketSize;
-            do
-            {
-                result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, data, 0, 0, endpointZeroMaxPacketSize);
+            result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, data, 0, 0, endpointZeroMaxPacketSize);
                 if (result.IsError)
                     throw new UsbTransferException($"When getting device descriptor: {result.TransactionResult}", result.TransactionResult);
-            } while (data[0] != 18); //Some devices sometimes return all 0s or all 20s, don't know why
 
             endpointZeroMaxPacketSize = data[7];
 
@@ -88,7 +88,7 @@ namespace Konamiman.RookieDrive.Usb
             //Here device is in ADDRESS state
 
             getDescriptorSetupPacket.wValueH = UsbDescriptorType.CONFIGURATION;
-            getDescriptorSetupPacket.wValueL = 0; //We're interested in the first configuration available
+            getDescriptorSetupPacket.wValueL = 0; //We're interested in the first pconfiguration available
             getDescriptorSetupPacket.wLength = (short)data.Length;
             result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, data, 0, UsbDeviceAddress, endpointZeroMaxPacketSize);
             if (result.IsError)
@@ -185,7 +185,47 @@ namespace Konamiman.RookieDrive.Usb
                 GoToNextDescriptor();   //Next interface descriptor
             }
 
-            return interfaces;
+            return interfaces.Where(i => i != null).ToArray();
+        }
+
+        public UsbTransferResult ExecuteDataInTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber)
+        {
+            return ExecuteDataTransfer(dataBuffer, dataBufferIndex, dataLength, deviceAddress, endpointNumber, UsbDataDirection.IN);
+        }
+
+        public UsbTransferResult ExecuteDataOutTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber)
+        {
+            return ExecuteDataTransfer(dataBuffer, dataBufferIndex, dataLength, deviceAddress, endpointNumber, UsbDataDirection.OUT);
+        }
+
+        private UsbTransferResult ExecuteDataTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber, UsbDataDirection dataDirection)
+        {
+            if (deviceAddress != UsbDeviceAddress)
+                throw new InvalidOperationException($"There's no device connected with address {deviceAddress}");
+
+            if (!connectedDevice.EndpointsByNumber.ContainsKey((byte)endpointNumber))
+                throw new InvalidOperationException($"The device with address {deviceAddress} doesn't have an endpoint with number 0x{endpointNumber:X} in any of the interfaces of the current configuration");
+
+            if ((UsbDataDirection)(endpointNumber & 0x80) != dataDirection)
+                throw new InvalidOperationException($"Can't perform {dataDirection} transfers on endpoint 0x{endpointNumber:X}, it's not an {dataDirection} endpoint");
+
+            var endpointType = connectedDevice.EndpointsByNumber[(byte)endpointNumber].Type;
+
+            if(endpointType != UsbEndpointType.Bulk && endpointType != UsbEndpointType.Interrupt)
+                throw new InvalidOperationException($"Can't perform data transfers on endpoint 0x{endpointNumber:X}, it's a {endpointType} endpoint");
+
+            if(dataDirection == UsbDataDirection.OUT && endpointType == UsbEndpointType.Interrupt)
+                throw new InvalidOperationException($"Can't perform OUT data transfers on endpoint 0x{endpointNumber:X}, it's an Interrupt endpoint");
+
+            var endpoint = connectedDevice.EndpointsByNumber[(byte)endpointNumber];
+
+            var result = dataDirection == UsbDataDirection.IN ?
+                hw.ExecuteDataInTransfer(dataBuffer, dataBufferIndex, dataLength, deviceAddress, endpointNumber, endpoint.MaxPacketSize, endpoint.ToggleBit) :
+                hw.ExecuteDataOutTransfer(dataBuffer, dataBufferIndex, dataLength, deviceAddress, endpointNumber, endpoint.MaxPacketSize, endpoint.ToggleBit);
+
+            endpoint.ToggleBit = result.NextTogleBit;
+
+            return result;
         }
     }
 }

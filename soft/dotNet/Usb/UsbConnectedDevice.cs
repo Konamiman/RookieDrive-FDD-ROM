@@ -1,4 +1,7 @@
-﻿namespace Konamiman.RookieDrive.Usb
+﻿using System.Collections.Generic;
+using System.Linq;
+
+namespace Konamiman.RookieDrive.Usb
 {
     public class UsbConnectedDevice
     {
@@ -9,6 +12,10 @@
             this.Subclass = subclass;
             this.Protocol = protocol;
             this.InterfacesForCurrentConfiguration = interfacesForCurrentConfiguration;
+
+            this.EndpointsByNumber = interfacesForCurrentConfiguration
+                .SelectMany(i => i.Endpoints)
+                .ToDictionary(e => e.Number);
         }
 
         public byte EndpointZeroMaxPacketSize { get; }
@@ -20,5 +27,7 @@
         public byte Protocol { get; }
 
         public UsbInterface[] InterfacesForCurrentConfiguration { get; }
+
+        internal Dictionary<byte, UsbEndpoint> EndpointsByNumber { get; }
     }
 }

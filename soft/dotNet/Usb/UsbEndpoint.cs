@@ -18,12 +18,7 @@
 
         public int MaxPacketSize { get; }
 
-        internal int ToggleBit { get; private set; }
-
-        internal void FlipToggleBit()
-        {
-            ToggleBit ^= 1;
-        }
+        internal int ToggleBit { get; set; }
 
         internal void ResetToggleBit() => ToggleBit = 0;
     }

@@ -4,10 +4,11 @@ namespace Konamiman.RookieDrive.Usb
 {
     public class UsbTransferResult
     {
-        public UsbTransferResult(UsbPacketResult transactionResult)
+        public UsbTransferResult(UsbPacketResult transactionResult, int nextToggleBit = 0)
         {
             this.TransactionResult = transactionResult;
             this.TransferredDataCount = 0;
+            this.NextTogleBit = nextToggleBit;
         }
 
         public UsbTransferResult(int transferredDataCount, int nextToggleBit)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO.Ports;
+using System.Threading;
 
 namespace Konamiman.RookieDrive.Usb
 {
@@ -22,7 +23,7 @@ namespace Konamiman.RookieDrive.Usb
             get
             {
                 WriteToSerialPort(2);
-                var data = serialPort.ReadByte();
+                var data = ReadFromSerialPort();
                 return (data & 0x80) == 0;
             }
         }
@@ -30,7 +31,7 @@ namespace Konamiman.RookieDrive.Usb
         public byte ReadData()
         {
             WriteToSerialPort(4);
-            return (byte)serialPort.ReadByte();
+            return ReadFromSerialPort();
         }
 
         public void WriteCommand(byte command)
@@ -46,6 +47,12 @@ namespace Konamiman.RookieDrive.Usb
         private void WriteToSerialPort(params byte[] data)
         {
             serialPort.Write(data, 0, data.Length);
+        }
+
+        private byte ReadFromSerialPort()
+        {
+            while (serialPort.BytesToRead == 0) Thread.Sleep(1);
+            return (byte)serialPort.ReadByte();
         }
     }
 }

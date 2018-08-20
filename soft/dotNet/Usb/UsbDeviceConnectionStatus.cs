@@ -4,6 +4,7 @@
     {
         NotConnected,
         Connected,
-        Changed
+        Changed,
+        Error
     }
 }

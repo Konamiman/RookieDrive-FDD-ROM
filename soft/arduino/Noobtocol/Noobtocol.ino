@@ -41,6 +41,11 @@ void setup() {
 	pinMode(CH_WR, OUTPUT);
 	pinMode(CH_PCS, OUTPUT);
 	pinMode(CH_A0, OUTPUT);
+	
+	digitalWrite(CH_PCS, HIGH);
+	digitalWrite(CH_RD, HIGH);
+	digitalWrite(CH_WR, HIGH);
+
 	Serial.begin(SERIAL_BAUDS);
 }
 
@@ -68,7 +73,11 @@ void loop() {
 		data = CH_ReadData();
 		WriteByteToSerial(data);
 		break;
+	default:
+		while (Serial.available() >= 0) Serial.read();
 	}
+
+	//while (Serial.available() >= 0) Serial.read();
 }
 
 byte ReadByteFromSerial()
@@ -81,7 +90,7 @@ void WriteByteToSerial(byte data)
 {
 	while (Serial.availableForWrite() == 0);
 	Serial.write(data);
-	Serial.flush();
+	//Serial.flush();
 }
 
 byte CH_ReadData()
@@ -103,7 +112,7 @@ byte CH_ReadPort(int address)
 	for (int i = 0; i < 8; i++)
 	{
 		pinMode(CH_D0 + i, INPUT);
-		digitalWrite(CH_A0 + i, LOW);
+		digitalWrite(CH_D0 + i, LOW);
 	}
 
 	digitalWrite(CH_PCS, LOW);

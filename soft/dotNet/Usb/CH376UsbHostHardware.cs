@@ -21,6 +21,8 @@ namespace Konamiman.RookieDrive.Usb
         const byte INT_CONNECT = 0x15;
         const byte INT_DISCONNECT = 0x16;
         const byte USB_INT_BUF_OVER = 0x17;
+        const byte CMD_RET_SUCCESS = 0x51;
+        const byte CMD_RET_ABORT = 0x5F;
 
         private readonly ICH376Ports ch;
         private static readonly byte[] noData = new byte[0];
@@ -40,23 +42,33 @@ namespace Konamiman.RookieDrive.Usb
         {
             ch.WriteCommand(RESET_ALL);
             Thread.Sleep(50);
+            SetHostWithoutSofMode();
         }
 
-        private void BusResetAndSetHostWithSofMode()
+        private UsbPacketResult BusResetAndSetHostWithSofMode()
+        {
+            var result = SetUsbMode(7);
+            if (result != UsbPacketResult.Ok)
+                return result;
+
+            Thread.Sleep(35);
+
+            return SetUsbMode(6);
+        }
+
+        private UsbPacketResult SetUsbMode(byte mode)
         {
             ch.WriteCommand(SET_USB_MODE);
-            ch.WriteData(7);
-            Thread.Sleep(1);
-            var result = WaitAndGetResult(expectIntConnect: true);
-            if (result != UsbPacketResult.Ok)
-                throw new UsbTransferException($"When setting host mode without SOF: 0x{result:X}", result);
+            ch.WriteData(mode);
+            for(int i=0; i<50; i++)
+            {
+                if (ch.ReadData() == CMD_RET_SUCCESS)
+                    return UsbPacketResult.Ok;
 
-            ch.WriteCommand(SET_USB_MODE);
-            ch.WriteData(6);
-            Thread.Sleep(1);
-            result = WaitAndGetResult(expectIntConnect: true);
-            if (result != UsbPacketResult.Ok)
-                throw new UsbTransferException($"When setting host mode with SOF: 0x{result:X}", result);
+                Thread.Sleep(1);
+            }
+
+            return UsbPacketResult.OtherError;
         }
 
         private void SetHostWithoutSofMode()
@@ -75,8 +87,9 @@ namespace Konamiman.RookieDrive.Usb
                 if (status == INT_CONNECT)
                 {
                     deviceIsConnected = true;
-                    BusResetAndSetHostWithSofMode();
-                    return UsbDeviceConnectionStatus.Changed;
+                    return BusResetAndSetHostWithSofMode() == UsbPacketResult.Ok ?
+                        UsbDeviceConnectionStatus.Changed :
+                        UsbDeviceConnectionStatus.Error;
                 }
                 else if (status == INT_DISCONNECT)
                 {
@@ -96,9 +109,6 @@ namespace Konamiman.RookieDrive.Usb
             var remainingDataLength = requestedDataLength;
             UsbPacketResult result;
 
-            if (setupPacket.DataDirection == UsbDataDirection.OUT && requestedDataLength > 0)
-                throw new NotImplementedException("Control OUT transactions are not implemented yet");
-
             SetTargetDeviceAddress(deviceAddress);
 
             //Setup
@@ -108,24 +118,14 @@ namespace Konamiman.RookieDrive.Usb
             if ((result = WaitAndGetResult()) != UsbPacketResult.Ok)
                 return new UsbTransferResult(result);
 
-            Thread.Sleep(1);
-
             //Data
 
-            while (remainingDataLength > 0)
-            {
-                toggle = toggle ^ 1;
-                result = RepeatWhileNak(() => IssueToken(endpointNumber, PID_IN, toggle, 0));
-                if (result != UsbPacketResult.Ok)
-                    return new UsbTransferResult(result);
+            var dataTransferResult = setupPacket.DataDirection == UsbDataDirection.IN ?
+                ExecuteDataInTransfer(dataBuffer, dataBufferIndex, requestedDataLength, deviceAddress, 0, endpointPacketSize, 1) :
+                ExecuteDataOutTransfer(dataBuffer, dataBufferIndex, requestedDataLength, deviceAddress, 0, endpointPacketSize, 1);
 
-                var amountRead = ReadUsbData(dataBuffer, dataBufferIndex);
-                dataBufferIndex += amountRead;
-                remainingDataLength -= amountRead;
-
-                if (amountRead < endpointPacketSize)
-                    break;
-            }
+            if (dataTransferResult.IsError)
+                return dataTransferResult;
 
             //Status
 
@@ -143,7 +143,7 @@ namespace Konamiman.RookieDrive.Usb
             if (result != UsbPacketResult.Ok)
                 return new UsbTransferResult(result);
 
-            return new UsbTransferResult(requestedDataLength - remainingDataLength, 0);
+            return dataTransferResult;
         }
 
         private UsbPacketResult RepeatWhileNak(Action action)
@@ -163,15 +163,16 @@ namespace Konamiman.RookieDrive.Usb
         private void SetTargetDeviceAddress(int deviceAddress)
         {
             ch.WriteCommand(SET_USB_ADDR);
-            ch.WriteCommand((byte)deviceAddress);
+            ch.WriteData((byte)deviceAddress);
         }
 
-        private void WriteUsbData(byte[] data)
+        private void WriteUsbData(byte[] data, int index = 0, int? length = null)
         {
+            length = length ?? data.Length - index;
             ch.WriteCommand(WR_HOST_DATA);
-            ch.WriteData((byte)data.Length);
-            foreach (var b in data)
-                ch.WriteData(b);
+            ch.WriteData((byte)length);
+            for(var i = 0; i < length; i++)
+                ch.WriteData(data[index + i]);
         }
 
         int ReadUsbData(byte[] data, int index = 0)
@@ -192,18 +193,18 @@ namespace Konamiman.RookieDrive.Usb
             ch.WriteData((byte)(endpointNumber << 4 | pid));
         }
 
-        private UsbPacketResult WaitAndGetResult(bool expectIntConnect = false)
+        private UsbPacketResult WaitAndGetResult()
         {
-            var waited = 0;
-            while (!ch.IntIsActive && waited++ < 10) Thread.Sleep(1);
+            while (!ch.IntIsActive)
+                Thread.Sleep(1);
+
             ch.WriteCommand(GET_STATUS);
             var result = ch.ReadData();
 
-            if (result == INT_CONNECT && expectIntConnect)
-                return UsbPacketResult.Ok;
-
             switch(result)
             {
+                case CMD_RET_SUCCESS:
+                    return UsbPacketResult.Ok;
                 case INT_SUCCESS:
                     return UsbPacketResult.Ok;
                 case INT_DISCONNECT:
@@ -234,12 +235,50 @@ namespace Konamiman.RookieDrive.Usb
 
         public UsbTransferResult ExecuteDataInTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber, int endpointPacketSize, int toggleBit)
         {
-            throw new NotImplementedException();
+            var remainingDataLength = dataLength;
+            UsbPacketResult result;
+
+            SetTargetDeviceAddress(deviceAddress);
+
+            while (remainingDataLength > 0)
+            {
+                result = RepeatWhileNak(() => IssueToken(endpointNumber, PID_IN, toggleBit, 0));
+                if (result != UsbPacketResult.Ok)
+                    return new UsbTransferResult(result, toggleBit);
+
+                toggleBit = toggleBit ^ 1;
+                var amountRead = ReadUsbData(dataBuffer, dataBufferIndex);
+                dataBufferIndex += amountRead;
+                remainingDataLength -= amountRead;
+
+                if (amountRead < endpointPacketSize)
+                    break;
+            }
+
+            return new UsbTransferResult(dataLength - remainingDataLength, toggleBit);
         }
 
         public UsbTransferResult ExecuteDataOutTransfer(byte[] dataBuffer, int dataBufferIndex, int dataLength, int deviceAddress, int endpointNumber, int endpointPacketSize, int toggleBit)
         {
-            throw new NotImplementedException();
+            var remainingDataLength = dataLength;
+            UsbPacketResult result;
+
+            SetTargetDeviceAddress(deviceAddress);
+
+            while (remainingDataLength > 0)
+            {
+                var amountWritten = Math.Min(endpointNumber, remainingDataLength);
+                WriteUsbData(dataBuffer, dataBufferIndex, amountWritten);
+                result = RepeatWhileNak(() => IssueToken(endpointNumber, PID_OUT, 0, toggleBit));
+                if (result != UsbPacketResult.Ok)
+                    return new UsbTransferResult(result, toggleBit);
+
+                toggleBit = toggleBit ^ 1;
+                dataBufferIndex += amountWritten;
+                remainingDataLength -= amountWritten;
+            }
+
+            return new UsbTransferResult(dataLength, toggleBit);
         }
     }
 }
