@@ -112,61 +112,87 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                 return;
             }
 
-            if (isWrite)
+            try
             {
-                z80.Registers.A = 0; //Write protected
-                return;
-            }
-
-            Debug.WriteLine($"--- Read sector: {sectorNumber}, count: {numberOfSectors}, to: {memoryAddress:X4}h");
-            //try
-            //{
-                var sectorData = ReadSectors(sectorNumber, numberOfSectors, out byte errorCode);
-                if (errorCode == 0)
+                if (isWrite)
                 {
-                    z80.Registers.A = 0;
-                    SetMemoryContents(memoryAddress, sectorData);
+                    Debug.WriteLine($"--> Write sector: {sectorNumber}, count: {numberOfSectors}, from: {memoryAddress:X4}h");
+                    var memoryData = GetMemoryContents(memoryAddress, numberOfSectors * 512);
+                    var errorCode = WriteSectors(sectorNumber, numberOfSectors, memoryData);
+                    if (errorCode == 0)
+                    {
+                        z80.Registers.A = 0;
+                    }
+                    else
+                    {
+                        z80.Registers.A = errorCode;
+                        z80.Registers.B = 0;
+                    }
                 }
                 else
                 {
-                    z80.Registers.A = errorCode;
-                    z80.Registers.B = 0;
+                    Debug.WriteLine($"<-- Read sector: {sectorNumber}, count: {numberOfSectors}, to: {memoryAddress:X4}h");
+                    var sectorData = ReadSectors(sectorNumber, numberOfSectors, out byte errorCode);
+                    if (errorCode == 0)
+                    {
+                        z80.Registers.A = 0;
+                        SetMemoryContents(memoryAddress, sectorData);
+                    }
+                    else
+                    {
+                        z80.Registers.A = errorCode;
+                        z80.Registers.B = 0;
+                    }
                 }
-            //}
-            //catch (Exception ex)
-            //{
-            //    Debug.WriteLine($"*** ({ex.GetType().Name}) {ex.Message}");
-            //    z80.Registers.B = 0;
-            //    z80.Registers.A = 12;
-            //}
+                
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"*** ({ex.GetType().Name}) {ex.Message}");
+                z80.Registers.B = 0;
+                z80.Registers.A = 12;
+            }
 
             z80.Registers.CF = (z80.Registers.A != 0);
+            if (z80.Registers.A == 255) z80.Registers.A = 0; //Write protected
+
+            MTOFF();
         }
 
         private readonly byte[] requestSenseCommand = new byte[] { 3, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0 };
+
         private byte[] ReadSectors(int sectorNumber, int numberOfSectors, out byte errorCode)
         {
-            errorCode = 0;
-            var readSectorCommand = new byte[] {
-                0x28,
+            var data = new byte[numberOfSectors * 512];
+            errorCode = ReadOrWriteSectors(sectorNumber, numberOfSectors, data, false);
+            return errorCode == 0 ? data : null;
+        }
+
+        private byte WriteSectors(int sectorNumber, int numberOfSectors, byte[] data)
+        {
+            return ReadOrWriteSectors(sectorNumber, numberOfSectors, data, true);
+        }
+
+        private byte ReadOrWriteSectors(int sectorNumber, int numberOfSectors, byte[] data, bool write)
+        {
+            var readOrWriteSectorCommand = new byte[] {
+                (byte)(write ? 0x2A: 0x28),
                 0,
                 0, 0, ((short)sectorNumber).GetHighByte(), ((short)sectorNumber).GetLowByte(),
                 0,
                 0, (byte)numberOfSectors,
                 0, 0, 0 };
-            var data = new byte[numberOfSectors * 512];
             do
             {
-                var result = cbi.ExecuteCommand(readSectorCommand, data, 0, data.Length, UsbDataDirection.IN);
+                var result = cbi.ExecuteCommand(readOrWriteSectorCommand, data, 0, data.Length, write ? UsbDataDirection.OUT : UsbDataDirection.IN);
                 if (!result.IsError && result.SenseData?[0] == 0)
-                    return data;
+                    return 0;
 
                 result = cbi.ExecuteCommand(requestSenseCommand, data, 0, 14, UsbDataDirection.IN);
                 if (result.IsError)
                 {
                     Debug.WriteLine($"*** Error when executing Request Sense: {result.TransactionResult}");
-                    errorCode = 12;
-                    return null;
+                    return 12;
                 }
 
                 var asc = data[12];
@@ -176,8 +202,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
 
                 if (asc != 0x28 && asc != 0x29)
                 {
-                    errorCode = DskioErrorCodeFromAsc(asc);
-                    return null;
+                    return DskioErrorCodeFromAsc(asc);
                 }
                 Thread.Sleep(100);
             } while (true);
@@ -188,7 +213,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             switch (asc)
             {
                 case 0x27:
-                    return 0;   //Write protected
+                    return 255;   //Write protected (actually 0)
                 case 0x3A:
                     return 2;   //Not ready
                 case 0x10:
@@ -206,6 +231,14 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
         {
             for (var i = 0; i < contents.Length; i++)
                 memory[memoryAddress + i] = contents[i];
+        }
+
+        protected byte[] GetMemoryContents(int memoryAddress, int length)
+        {
+            var contents = new byte[length];
+            for (var i = 0; i < contents.Length; i++)
+                contents[i] = memory[memoryAddress + i];
+            return contents;
         }
 
         void DSKCHG_GETDPB(bool checkFileChanged)
@@ -316,8 +349,6 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             if (errorCode != 0)
                 return null;
 
-            var maxSectorNumber = 2880 - 1; //!!!
-
             var dpb = new byte[18];
 
             dpb[0] = sector0[21]; //media descriptor
@@ -342,7 +373,8 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             var firstDataSectorNumber = (ushort)(reservedSectors + fatSectors + rootDirectorySectors);
             dpb[11] = firstDataSectorNumber.GetLowByte();
             dpb[12] = firstDataSectorNumber.GetHighByte();
-            var numberOfDataSectors = (maxSectorNumber + 1) - firstDataSectorNumber;
+            var sectorsCount = sector0[19] | (sector0[20] << 8);
+            var numberOfDataSectors = sectorsCount - firstDataSectorNumber;
             var clusterCount = numberOfDataSectors / sectorsPerCluster;
             var maxClusterNumber = (ushort)(clusterCount + 1); //Note that the first cluster number is 2
             dpb[13] = maxClusterNumber.GetLowByte();
