@@ -5,12 +5,16 @@ namespace Konamiman.RookieDrive.Usb
 {
     public class UsbConnectedDevice
     {
-        public UsbConnectedDevice(byte endpointZeroMaxPacketSize, byte @class, byte subclass, byte protocol, UsbInterface[] interfacesForCurrentConfiguration)
+        public UsbConnectedDevice(byte endpointZeroMaxPacketSize, byte @class, byte subclass, byte protocol, int vendorId, int productId, byte manufacturerStringIndex, byte productStringIndex, UsbInterface[] interfacesForCurrentConfiguration)
         {
             this.EndpointZeroMaxPacketSize = endpointZeroMaxPacketSize;
             this.Class = @class;
             this.Subclass = subclass;
             this.Protocol = protocol;
+            this.VendorId = vendorId;
+            this.ProductId = productId;
+            this.ManufacturerStringIndex = manufacturerStringIndex;
+            this.ProductStringIndex = productStringIndex;
             this.InterfacesForCurrentConfiguration = interfacesForCurrentConfiguration;
 
             this.EndpointsByNumber = interfacesForCurrentConfiguration
@@ -25,6 +29,14 @@ namespace Konamiman.RookieDrive.Usb
         public byte Subclass { get; }
 
         public byte Protocol { get; }
+
+        public int VendorId { get; }
+
+        public int ProductId { get; }
+
+        public byte ManufacturerStringIndex { get; }
+
+        public byte ProductStringIndex { get; }
 
         public UsbInterface[] InterfacesForCurrentConfiguration { get; }
 

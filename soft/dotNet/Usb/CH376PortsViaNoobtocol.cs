@@ -54,5 +54,24 @@ namespace Konamiman.RookieDrive.Usb
             while (serialPort.BytesToRead == 0) Thread.Sleep(1);
             return (byte)serialPort.ReadByte();
         }
+
+        public byte[] ReadMultipleData(int length)
+        {
+            if (length == 0) return new byte[0];
+
+            var data = new byte[length];
+            var index = 0;
+            var remaining = length;
+            while (remaining > 0)
+            {
+                var blockLength = Math.Min(remaining, 256);
+                WriteToSerialPort(6, (byte)(blockLength == 256 ? 0 : blockLength));
+                while (serialPort.BytesToRead < blockLength) Thread.Sleep(1);
+                serialPort.Read(data, index, blockLength);
+                index += blockLength;
+                remaining -= blockLength;
+            }
+            return data;
+        }
     }
 }

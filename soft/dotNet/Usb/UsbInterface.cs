@@ -2,13 +2,16 @@
 {
     public class UsbInterface
     {
-        public UsbInterface(byte @class, byte subclass, byte protocol, UsbEndpoint[] endpoints)
+        public UsbInterface(byte interfaceNumber, byte @class, byte subclass, byte protocol, UsbEndpoint[] endpoints)
         {
+            this.InterfaceNumber = interfaceNumber;
             this.Class = @class;
             this.Subclass = subclass;
             this.Protocol = protocol;
             this.Endpoints = endpoints;
         }
+
+        public byte InterfaceNumber { get; }
 
         public byte Class { get; }
 

@@ -8,6 +8,7 @@
         Timeout,
         DataError,
         OtherError,
-        NoDeviceConnected
+        NoDeviceConnected,
+        NotImplemented
     }
 }

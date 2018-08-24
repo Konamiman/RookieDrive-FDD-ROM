@@ -9,5 +9,7 @@
         void WriteData(byte data);
 
         byte ReadData();
+
+        byte[] ReadMultipleData(int length);
     }
 }

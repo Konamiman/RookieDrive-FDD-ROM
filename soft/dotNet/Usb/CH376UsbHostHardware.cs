@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Threading;
+using System.Linq;
 
 namespace Konamiman.RookieDrive.Usb
 {
-    public class CH376UsbHostHardware : IUsbHostHardware
+    public class CH376UsbHostHardware : IUsbHostHardware, IUsbHardwareShortcuts
     {
         const byte RESET_ALL = 0x05;
         const byte WR_HOST_DATA = 0x2C;
@@ -12,6 +13,7 @@ namespace Konamiman.RookieDrive.Usb
         const byte GET_STATUS = 0x22;
         const byte SET_USB_ADDR = 0x13;
         const byte SET_USB_MODE = 0x15;
+        const byte GET_DESCR = 0x46;
 
         const byte PID_SETUP = 0x0D;
         const byte PID_IN = 0x09;
@@ -179,9 +181,12 @@ namespace Konamiman.RookieDrive.Usb
         {
             ch.WriteCommand(RD_USB_DATA0);
             var length = ch.ReadData();
-            if(data != null)
-                for (int i = 0; i < length; i++)
-                    data[index + i] = ch.ReadData();
+
+            if (data != null)
+            {
+                var data2 = ch.ReadMultipleData(length);
+                Array.Copy(data2, 0, data, index, length);
+            }
 
             return length;
         }
@@ -267,7 +272,7 @@ namespace Konamiman.RookieDrive.Usb
 
             while (remainingDataLength > 0)
             {
-                var amountWritten = Math.Min(endpointNumber, remainingDataLength);
+                var amountWritten = Math.Min(endpointPacketSize, remainingDataLength);
                 WriteUsbData(dataBuffer, dataBufferIndex, amountWritten);
                 result = RepeatWhileNak(() => IssueToken(endpointNumber, PID_OUT, 0, toggleBit));
                 if (result != UsbPacketResult.Ok)
@@ -279,6 +284,34 @@ namespace Konamiman.RookieDrive.Usb
             }
 
             return new UsbTransferResult(dataLength, toggleBit);
+        }
+
+        public UsbTransferResult GetDescriptor(int deviceAddress, byte descriptorType, byte descriptorIndex, int languageId, out byte[] descriptorBytes)
+        {
+            SetTargetDeviceAddress(deviceAddress);
+
+            descriptorBytes = null;
+            if(
+                (descriptorType != UsbDescriptorType.DEVICE && 
+                descriptorType != UsbDescriptorType.CONFIGURATION) ||
+                descriptorIndex != 0 ||
+                languageId != 0)
+            {
+                return new UsbTransferResult(UsbPacketResult.NotImplemented);
+            }
+
+            ch.WriteCommand(GET_DESCR);
+            ch.WriteCommand(descriptorType);
+            var result = WaitAndGetResult();
+            if (result == UsbPacketResult.DataError)
+                return new UsbTransferResult(UsbPacketResult.NotImplemented);
+            else if (result != UsbPacketResult.Ok)
+                return new UsbTransferResult(result);
+
+            descriptorBytes = new byte[64];
+            var length = ReadUsbData(descriptorBytes);
+            descriptorBytes = descriptorBytes.Take(length).ToArray();
+            return new UsbTransferResult(length, 0);
         }
     }
 }

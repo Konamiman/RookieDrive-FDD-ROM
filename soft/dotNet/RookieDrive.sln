@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Usb", "Usb\Usb.csproj", "{9
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sandbox", "Sandbox\Sandbox.csproj", "{CE47348E-D8B2-4652-A822-6B3AED5E64E6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NestorMsxPlugin", "NestorMsxPlugin\NestorMsxPlugin.csproj", "{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{CE47348E-D8B2-4652-A822-6B3AED5E64E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CE47348E-D8B2-4652-A822-6B3AED5E64E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CE47348E-D8B2-4652-A822-6B3AED5E64E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

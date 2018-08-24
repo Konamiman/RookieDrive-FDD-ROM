@@ -43,9 +43,13 @@
     <Compile Include="CH376UsbHostHardware.cs" />
     <Compile Include="CH376PortsViaNoobtocol.cs" />
     <Compile Include="ICH376Ports.cs" />
+    <Compile Include="IUsbHardwareShortcuts.cs" />
+    <Compile Include="IUsbCbiTransport.cs" />
     <Compile Include="IUsbHost.cs" />
     <Compile Include="IUsbHostHardware.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UsbCbiCommandResult.cs" />
+    <Compile Include="UsbCbiTransport.cs" />
     <Compile Include="UsbConnectedDevice.cs" />
     <Compile Include="UsbDataDirection.cs" />
     <Compile Include="UsbDescriptorType.cs" />

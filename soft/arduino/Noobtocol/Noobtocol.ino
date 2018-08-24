@@ -51,6 +51,8 @@ void setup() {
 
 void loop() {
 	byte data;
+	int length;
+	int i;
 
 	if (Serial.available() == 0) return;
 
@@ -72,6 +74,15 @@ void loop() {
 	case 4: //Read data
 		data = CH_ReadData();
 		WriteByteToSerial(data);
+		break;
+	case 6: //Read multiple data
+		length = ReadByteFromSerial();
+		if (length == 0) length = 256;
+		for (i = 0; i < length; i++)
+		{
+			data = CH_ReadData();
+			WriteByteToSerial(data);
+		}
 		break;
 	default:
 		while (Serial.available() >= 0) Serial.read();

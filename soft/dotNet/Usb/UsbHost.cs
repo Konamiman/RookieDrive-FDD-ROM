@@ -40,6 +40,15 @@ namespace Konamiman.RookieDrive.Usb
             if (connectedDevice == null)
                 return new UsbTransferResult(UsbPacketResult.NoDeviceConnected);
 
+            if(setupPacket.bRequest == UsbStandardRequest.GET_DESCRIPTOR)
+            {
+                var result = GetDescriptor(deviceAddress, setupPacket.wValueH, setupPacket.wValueL, setupPacket.wIndex, connectedDevice.EndpointZeroMaxPacketSize, out byte[] buffer);
+                if (!result.IsError)
+                    Array.Copy(buffer, 0, dataBuffer, dataBufferIndex, result.TransferredDataCount);
+
+                return result;
+            }
+
             return hw.ExecuteControlTransfer(setupPacket, dataBuffer, dataBufferIndex, deviceAddress, connectedDevice.EndpointZeroMaxPacketSize, endpointNumber);
         }
 
@@ -60,6 +69,33 @@ namespace Konamiman.RookieDrive.Usb
                 throw new UsbTransferException("Error on USB bus reset", UsbPacketResult.OtherError);
         }
 
+        private UsbTransferResult GetDescriptor(int deviceAddress, byte descriptorType, byte descriptorIndex, int languageId, byte endpointZeroMaxPacketSize, out byte[] descriptorBytes)
+        {
+            UsbTransferResult result;
+            if(hw is IUsbHardwareShortcuts)
+            {
+                result = ((IUsbHardwareShortcuts)hw).GetDescriptor(deviceAddress, descriptorType, descriptorIndex, languageId, out descriptorBytes);
+                if (!result.IsError || result.TransactionResult != UsbPacketResult.NotImplemented)
+                    return result;
+            }
+
+            descriptorBytes = new byte[255];
+            UsbSetupPacket getDescriptorSetupPacket = new UsbSetupPacket(UsbStandardRequest.GET_DESCRIPTOR, 0x80);
+            getDescriptorSetupPacket.wValueH = descriptorType;
+            getDescriptorSetupPacket.wValueL = descriptorIndex;
+            getDescriptorSetupPacket.wLength = (short)descriptorBytes.Length;
+            getDescriptorSetupPacket.wIndex = (short)languageId;
+            result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, descriptorBytes, 0, deviceAddress, endpointZeroMaxPacketSize, 0);
+            if(result.IsError)
+            {
+                descriptorBytes = null;
+                return result;
+            }
+
+            descriptorBytes = descriptorBytes.Take(result.TransferredDataCount).ToArray();
+            return result;
+        }
+
         private UsbPacketResult InitializeDevice()
         {
             byte[] data = new byte[255];
@@ -69,11 +105,9 @@ namespace Konamiman.RookieDrive.Usb
 
             //Here device is in DEFAULT state (hw did bus reset already):
 
-            getDescriptorSetupPacket.wValueH = UsbDescriptorType.DEVICE;
-            getDescriptorSetupPacket.wLength = endpointZeroMaxPacketSize;
-            result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, data, 0, 0, endpointZeroMaxPacketSize);
-                if (result.IsError)
-                    throw new UsbTransferException($"When getting device descriptor: {result.TransactionResult}", result.TransactionResult);
+            result = GetDescriptor(0, UsbDescriptorType.DEVICE, 0, 0, endpointZeroMaxPacketSize, out data);
+            if (result.IsError)
+                throw new UsbTransferException($"When getting device descriptor: {result.TransactionResult}", result.TransactionResult);
 
             endpointZeroMaxPacketSize = data[7];
 
@@ -90,7 +124,8 @@ namespace Konamiman.RookieDrive.Usb
             getDescriptorSetupPacket.wValueH = UsbDescriptorType.CONFIGURATION;
             getDescriptorSetupPacket.wValueL = 0; //We're interested in the first pconfiguration available
             getDescriptorSetupPacket.wLength = (short)data.Length;
-            result = hw.ExecuteControlTransfer(getDescriptorSetupPacket, data, 0, UsbDeviceAddress, endpointZeroMaxPacketSize);
+
+            result = GetDescriptor(UsbDeviceAddress, UsbDescriptorType.CONFIGURATION, 0, 0, endpointZeroMaxPacketSize, out data);
             if (result.IsError)
                 throw new UsbTransferException($"When getting configuration descriptor: {result.TransactionResult}", result.TransactionResult);
 
@@ -111,6 +146,10 @@ namespace Konamiman.RookieDrive.Usb
                 deviceDescriptorBytes[4],
                 deviceDescriptorBytes[5],
                 deviceDescriptorBytes[6],
+                (int)(deviceDescriptorBytes[8] | (deviceDescriptorBytes[9] << 8)),
+                (int)(deviceDescriptorBytes[10] | (deviceDescriptorBytes[11] << 8)),
+                deviceDescriptorBytes[14],
+                deviceDescriptorBytes[15],
                 interfacesInfo);
 
             return UsbPacketResult.Ok;
@@ -162,6 +201,7 @@ namespace Konamiman.RookieDrive.Usb
                     continue;
                 }
 
+                var interfaceNumber = DescriptorByteAt(2);
                 var @class = DescriptorByteAt(5);
                 var subclass = DescriptorByteAt(6);
                 var protocol = DescriptorByteAt(7);
@@ -180,7 +220,7 @@ namespace Konamiman.RookieDrive.Usb
                     GoToNextDescriptor();   //Next endpoint descriptor
                 }
 
-                interfaces[interfaceIndex] = new UsbInterface(@class, subclass, protocol, endpoints);
+                interfaces[interfaceIndex] = new UsbInterface(interfaceNumber, @class, subclass, protocol, endpoints);
 
                 GoToNextDescriptor();   //Next interface descriptor
             }
