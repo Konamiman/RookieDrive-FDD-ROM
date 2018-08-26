@@ -22,7 +22,7 @@ namespace Konamiman.RookieDrive.Usb
             //HACK: Detect Konamiman's Traxdata FDD by VID+PID,
             //since it's a fully compliant CBI+UFI FDD but it identifies itself with class = FFh
             UsbInterface iface;
-            if (device.VendorId == 0x4408 && device.ProductId == 0x0601)
+            if (device.VendorId == 0x0644 && device.ProductId == 1)
                 iface = device.InterfacesForCurrentConfiguration.First();
             else
                 iface = device.InterfacesForCurrentConfiguration.Where(i =>

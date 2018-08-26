@@ -19,8 +19,8 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
     public class RookieDriveFddPlugin
     {
         private IDictionary<ushort, Action> kernelRoutines;
-        private ushort addressOfCallInihrd;
-        private ushort addressOfCallDrives;
+        private readonly ushort addressOfCallInihrd;
+        private readonly ushort addressOfCallDrives;
         private readonly SlotNumber slotNumber;
         private readonly string kernelFilePath;
         private readonly IZ80Processor z80;
@@ -182,30 +182,15 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                 0,
                 0, (byte)numberOfSectors,
                 0, 0, 0 };
-            do
-            {
-                var result = cbi.ExecuteCommand(readOrWriteSectorCommand, data, 0, data.Length, write ? UsbDataDirection.OUT : UsbDataDirection.IN);
-                if (!result.IsError && result.SenseData?[0] == 0)
-                    return 0;
 
-                result = cbi.ExecuteCommand(requestSenseCommand, data, 0, 14, UsbDataDirection.IN);
-                if (result.IsError)
-                {
-                    Debug.WriteLine($"*** Error when executing Request Sense: {result.TransactionResult}");
-                    return 12;
-                }
+            var result = cbi.ExecuteCommandWithRetry(readOrWriteSectorCommand, data, 0, data.Length, write ? UsbDataDirection.OUT : UsbDataDirection.IN, out bool mediaChanged);
+            if (!result.IsError && result.SenseData?[0] == 0)
+                return 0;
 
-                var asc = data[12];
-                Debug.WriteLine($"!!! ASC: {asc:X2}h, ASCQ: {data[13]:X2}h");
+            if (mediaChanged)
+                dpb = null;
 
-                if (asc == 0x28) dpb = null;
-
-                if (asc != 0x28 && asc != 0x29)
-                {
-                    return DskioErrorCodeFromAsc(asc);
-                }
-                Thread.Sleep(100);
-            } while (true);
+            return DskioErrorCodeFromAsc(result.SenseData?[0] ?? 12);
         }
 
         byte DskioErrorCodeFromAsc(byte asc)
@@ -304,29 +289,22 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             errorCode = 0;
 
             var data = new byte[15];
-            while (true)
+  
+            var result = cbi.ExecuteCommandWithRetry(modeSenseCommand, data, 0, 1, UsbDataDirection.IN, retryOnMediaChanged: false);
+            if (!result.IsError && result.SenseData?[0] == 0)
+                return false;
+
+            if(result.SenseData == null)
             {
-                var result = cbi.ExecuteCommand(modeSenseCommand, data, 0, 1, UsbDataDirection.IN);
-                if (!result.IsError && result.SenseData?[0] == 0)
-                    return false;
-
-                result = cbi.ExecuteCommand(requestSenseCommand, data, 0, 14, UsbDataDirection.IN);
-                if (result.IsError)
-                {
-                    Debug.WriteLine($"*** Error when executing Request Sense: {result.TransactionResult}");
-                    errorCode = 12;
-                    return false;
-                }
-
-                var asc = data[12];
-                Debug.WriteLine($"!!! ASC: {asc:X2}h, ASCQ: {data[13]:X2h}");
-                if (asc == 0x28)
-                    return true;
-                else if (asc != 0x29)
-                {
-                    errorCode = DskioErrorCodeFromAsc(asc);
-                    return false;
-                }
+                errorCode = 12;
+                return false;
+            }
+            else if (result.SenseData[0] == 0x28)
+                return true;
+            else
+            {
+                errorCode = DskioErrorCodeFromAsc(result.SenseData[0]);
+                return false;
             }
         }
 

@@ -74,6 +74,9 @@
     <Compile Include="..\Usb\UsbCbiTransport.cs">
       <Link>Usb\UsbCbiTransport.cs</Link>
     </Compile>
+    <Compile Include="..\Usb\UsbCbiTransportExtensions.cs">
+      <Link>Usb\UsbCbiTransportExtensions.cs</Link>
+    </Compile>
     <Compile Include="..\Usb\UsbConnectedDevice.cs">
       <Link>Usb\UsbConnectedDevice.cs</Link>
     </Compile>
