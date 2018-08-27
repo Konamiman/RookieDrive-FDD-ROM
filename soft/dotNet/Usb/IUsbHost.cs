@@ -4,7 +4,7 @@
     {
         void Reset();
 
-        void UpdateDeviceConnectionStatus();
+        bool UpdateDeviceConnectionStatus();
 
         byte[] ConnectedDeviceAddresses { get; }
 

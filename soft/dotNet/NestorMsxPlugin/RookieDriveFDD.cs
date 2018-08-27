@@ -26,7 +26,8 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
         private readonly IZ80Processor z80;
         private readonly IExternallyControlledSlotsSystem memory;
         private readonly byte[] kernelContents;
-        private readonly IUsbCbiTransport cbi;
+        private readonly IUsbHost host;
+        private IUsbCbiTransport cbi;
         private byte[] dpb;
 
         public RookieDriveFddPlugin(PluginContext context, IDictionary<string, object> pluginConfig)
@@ -55,8 +56,28 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             this.kernelContents = File.ReadAllBytes(kernelFilePath);
             ValidateKernelFileContents(kernelContents);
 
-            cbi = new UsbCbiTransport(new UsbHost(new CH376UsbHostHardware(new CH376PortsViaNoobtocol("COM4"))), 1);
+            host = new UsbHost(new CH376UsbHostHardware(new CH376PortsViaNoobtocol("COM4")));
+            UpdateCbiInstance();
+
         }
+
+        private void CheckForUsbChanges()
+        {
+            var usbBusChanged = host.UpdateDeviceConnectionStatus();
+            if (usbBusChanged)
+                UpdateCbiInstance();
+        }
+
+        private void UpdateCbiInstance()
+        {
+            var deviceAddress = host.ConnectedDeviceAddresses.FirstOrDefault();
+            if (deviceAddress == 0)
+                cbi = null;
+            else
+                cbi = new UsbCbiTransport(host, deviceAddress);
+        }
+
+        private bool DeviceAvailable => cbi != null;
 
         private void ValidateKernelFileContents(byte[] kernelFileContents)
         {
@@ -109,6 +130,13 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             if (driveNumber != 0)
             {
                 z80.Registers.A = 2; //not ready
+                return;
+            }
+
+            CheckForUsbChanges();
+            if(!DeviceAvailable)
+            {
+                z80.Registers.A = 12;
                 return;
             }
 
@@ -235,6 +263,13 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             if (driveNumber != 0)
             {
                 z80.Registers.A = 2;
+                return;
+            }
+
+            CheckForUsbChanges();
+            if (!DeviceAvailable)
+            {
+                z80.Registers.A = 12;
                 return;
             }
 

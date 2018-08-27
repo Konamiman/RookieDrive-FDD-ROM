@@ -10,6 +10,8 @@
 
         byte ReadData();
 
+        byte ReadStatus();
+
         byte[] ReadMultipleData(int length);
     }
 }

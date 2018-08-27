@@ -58,15 +58,23 @@ namespace Konamiman.RookieDrive.Usb
             UpdateDeviceConnectionStatus();
         }
 
-        public void UpdateDeviceConnectionStatus()
+        public bool UpdateDeviceConnectionStatus()
         {
             var hwDeviceStatus = hw.CheckConnectionStatus();
             if (hwDeviceStatus == UsbDeviceConnectionStatus.NotConnected)
+            {
                 connectedDevice = null;
+                return true;
+            }
             else if (hwDeviceStatus == UsbDeviceConnectionStatus.Changed)
+            {
                 InitializeDevice();
+                return true;
+            }
             else if (hwDeviceStatus == UsbDeviceConnectionStatus.Error)
                 throw new UsbTransferException("Error on USB bus reset", UsbPacketResult.OtherError);
+
+            return false;
         }
 
         private UsbTransferResult GetDescriptor(int deviceAddress, byte descriptorType, byte descriptorIndex, int languageId, byte endpointZeroMaxPacketSize, out byte[] descriptorBytes)

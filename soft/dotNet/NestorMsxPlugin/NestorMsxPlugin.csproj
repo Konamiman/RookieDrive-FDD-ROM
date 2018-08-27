@@ -121,6 +121,7 @@
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RookieDriveFDD.cs" />
+    <Compile Include="RookieDrivePorts.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

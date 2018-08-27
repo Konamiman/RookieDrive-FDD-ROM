@@ -34,6 +34,12 @@ namespace Konamiman.RookieDrive.Usb
             return ReadFromSerialPort();
         }
 
+        public byte ReadStatus()
+        {
+            WriteToSerialPort(2);
+            return ReadFromSerialPort();
+        }
+
         public void WriteCommand(byte command)
         {
             WriteToSerialPort(1, command);
