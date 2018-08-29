@@ -11,8 +11,7 @@
 ; doesn't make much sense.
 ; -----------------------------------------------------------------------------
 
-; Note that INIHRD, DSKIO and DSKCHG are in separate files
-
+; Note that INIHRD, DSKIO, DSKCHG, CHOICE and FORMAT are in separate files
 
 ; symbols which can be used from the kernel
 
@@ -85,6 +84,8 @@ SECLEN:		equ	512		; Size of biggest sector
 ; -----------------------------------------------------------------------------
 	
 INIHRD_BASIC:
+	ret
+	if 0
 	push hl
 	push de
 	push bc
@@ -99,6 +100,7 @@ INIHRD_BASIC:
 	pop  de
 	pop  hl
 	ret
+	endif
 
 
 ; -----------------------------------------------------------------------------
@@ -291,36 +293,6 @@ DEFDPB:
 	db   3
 	dw   7
 	
-; -----------------------------------------------------------------------------
-; CHOICE
-; -----------------------------------------------------------------------------
-; Input: 	None
-; Output:	HL	pointer to choice string, 0 if no choice
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-CHOICE:
-	ld   hl,0
-	ret
-
-; -----------------------------------------------------------------------------
-; DSKFMT
-; -----------------------------------------------------------------------------
-; Input: 	A	choicecode (1-9)
-;		D	drivenumber
-;		HL	begin of workarea
-;		BC	length of workarea
-; Output:	F	Cx set for error
-;			Cx reset for ok
-;		A	if error, errorcode
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-DSKFMT:
-	ld   a,16
-	scf
-	ret
-
 ; -----------------------------------------------------------------------------
 ; OEMSTATEMENT
 ; -----------------------------------------------------------------------------

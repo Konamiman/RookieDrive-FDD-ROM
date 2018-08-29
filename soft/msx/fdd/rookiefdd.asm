@@ -7,12 +7,16 @@
 ; Assemble with:
 ; sjasm rookiefdd.asm rookiefdd.rom
 
+    include "const.asm"
+
     include "kernel.asm"
     include "driver.asm"
     include "inihrd.asm"
-    include "dskio.asm"
-    include "dskchg.asm"
+    include "dskio_dskchg.asm"
+    include "choice_dskfmt.asm"
 
-HOSTILE_TAKEOVER:	db   1	  ; 0 = no, 1 = make this an exclusive diskrom
+    include "ch376.asm"
+
+HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
 
     DEFS	08000H-$,0
