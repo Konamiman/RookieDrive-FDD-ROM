@@ -135,8 +135,71 @@ _CH_DO_BUS_RESET:
 ;         E  = Endpoint number
 ;         Cy = Current state of the toggle bit
 ; Output: A  = Error code (one of USB_ERR_*)
-;         BC = Amount of data actually received
+;         BC = Amount of data actually received (only if no error)
 ;         Cy = New state of the toggle bit (even on error)
+
+HW_DATA_IN_TRANSFER:
+    call CH_SET_TARGET_DEVICE_ADDRESS
+
+CH_DATA_IN_TRANSFER:
+    rra
+    ld ix,0 ;IX = Received so far count
+    push de
+    pop iy  ;IY = EP size + EP number
+
+CH_DATA_IN_LOOP:
+    push af ;Toggle in bit 7
+    push bc ;Remaining length
+
+    ld e,iyl
+    ld b,CH_PID_IN
+    call CH_DO_ISSUE_TOKEN
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    jr nz,CH_DATA_IN_DONE   ;DONE if error
+
+    call CH_DO_READ_DATA
+    ld b,0
+    add ix,bc   ;Update received so far count
+
+    pop de
+    pop af
+    xor 80h     ;Update toggle
+    push af
+    push de
+
+    ld a,c
+    or a
+    jr z,CH_DATA_IN_DONE    ;DONE if no data received
+
+    ex (sp),hl  ;Now HL = Remaining data
+    or a
+    sbc hl,bc   ;Now HL = Updated remaning data
+    ld a,b
+    or c
+    ex (sp),hl  ;Remaining data is back on the stack
+    jr z,CH_DATA_IN_DONE    ;DONE if no data remaining
+
+    ld a,c
+    cp iyh
+    jr c,CH_DATA_IN_DONE    ;DONE if transferred less than the EP size
+
+    pop bc
+    pop af  ;We need this to pass the next toggle to CH_DO_ISSUE_TOKEN
+
+    jr CH_DATA_IN_LOOP
+
+;Input: A=Error code, in stack: remaining length, new toggle
+CH_DATA_IN_DONE:
+    ld d,a
+    pop bc
+    pop af
+    rla ;Toggle back to Cy
+    ld a,d
+    push ix
+    pop bc
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -164,9 +227,45 @@ CH_INT_IS_ACTIVE:
     and 80h
     ret
 
-CH_WAIT_INT_AND_GET_STATUS:
+;Wait for INT to get active, execute GET_STATUS, and return the matching USB_ERR_*
+CH_WAIT_INT_AND_GET_RESULT:
     call CH_INT_IS_ACTIVE
     jr nz,CH_WAIT_INT_AND_GET_STATUS
+    call CH_DO_GET_STATUS
+
+    cp CH_CMD_RET_SUCCESS
+    ld b,USB_ERR_OK
+    jr z,_CH_LD_A_B_RET
+    cp CH_INT_SUCCESS
+    jr z,_CH_LD_A_B_RET
+    cp CH_INT_DISCONNECT
+    ld b,USB_ERR_NO_DEVICE  ;TODO: Set NO SOF mode
+    jr z,_CH_LD_A_B_RET
+    cp CH_USB_INT_BUF_OVER
+    ld b,USB_ERR_DATA_ERROR
+    jr z,_CH_LD_A_B_RET
+
+    and 2Fh
+
+    cp 2Ah
+    ld a,USB_ERR_NAK
+    jr z,_CH_LD_A_B_RET
+    cp 2Eh
+    ld a,USB_ERR_STALL
+    jr z,_CH_LD_A_B_RET
+
+    and 23h
+
+    cp 20h
+    ld b,USB_ERR_TIMEOUT
+    jr z,_CH_LD_A_B_RET
+
+    ld b,USB_ERR_OTHER
+
+_CH_LD_A_B_RET:
+    ld a,b
+    ret
+
 
 CH_DO_GET_STATUS:
     ld a,CH_GET_STATUS
@@ -190,4 +289,50 @@ _CH_WAIT_USB_MODE:
     ret z
     djnz _CH_WAIT_USB_MODE
     scf
+    ret
+
+CH_SET_TARGET_DEVICE_ADDRESS:
+    push af
+    ld a,CH_SET_USB_ADDR
+    out (CH_COMMAND_PORT),a
+    pop af
+    out (CH_DATA_PORT),a
+    ret
+
+;E=Endpoint
+;B=PID
+;A=IN toggle in bit 7, OUT toggle in bit 6
+CH_DO_ISSUE_TOKEN:
+    ld d,a
+    ld a,CH_ISSUE_TKN_X
+    out (CH_COMMAND_PORT),a
+    ld a,d
+    out (CH_DATA_PORT),a    ;Toggles
+    ld a,e
+    rla
+    rla
+    rla
+    rla
+    and 0F0h
+    or b
+    out (CH_DATA_PORT),a    ;Endpoint | PID
+    ret
+
+;HL = Buffer
+;Output: C = Actually read amount
+;HL = HL + C
+CH_DO_READ_DATA:
+    ld a,RD_USB_DATA0
+    out (CH_COMMAND_PORT),a
+    in a,(CH_DATA_PORT)
+    ld c,a
+    or a
+    ret z   ;No data to transfer at all
+    ld b,a
+_CH_READ_DATA_LOOP:
+    in a,(CH_DATA_PORT)
+    ld (hl),a
+    inc hl
+    djnz _CH_READ_DATA_LOOP
+
     ret
