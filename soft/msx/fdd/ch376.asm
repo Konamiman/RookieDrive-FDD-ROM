@@ -1,3 +1,13 @@
+; This file contains all the code that depends on the CH376.
+;
+; To adapt the ROM to use a different USB host controller:
+;
+; - Create a new source file
+; - Copy all the USB_ERR_* constants to the new file
+; - Implement all the HW_* routines in the new file
+; - Include the new file in rookiefdd.asm, under "USB host controller hardware dependant code"
+
+
 USB_ERR_OK: equ 0
 USB_ERR_NAK: equ 1
 USB_ERR_STALL: equ 2
@@ -6,21 +16,26 @@ USB_ERR_DATA_ERROR: equ 4
 USB_ERR_NO_DEVICE: equ 5
 USB_ERR_OTHER: equ 255
 
-;--- Z80 ports
+CH_RESET_WAIT_AMOUNT: equ 1    ;35 for real hardware, can be less when using Noobtocol
+
+;--- CH376 port to Z80 ports mapping
 
 CH_DATA_PORT: equ 20h
 CH_COMMAND_PORT: equ 21h
 
 ;--- Commands
 
-CH_RESET_ALL: equ 05h
-CH_WR_HOST_DATA: equ 2Ch
-CH_RD_USB_DATA0: equ 27h
-CH_ISSUE_TKN_X: equ 4Eh
-CH_GET_STATUS: equ 22h
-CH_SET_USB_ADDR: equ 13h
-CH_SET_USB_MODE: equ 15h
-CH_GET_DESCR: equ 46h
+CH_CMD_RESET_ALL: equ 05h
+CH_CMD_CHECK_EXIST: equ 06h
+CH_CMD_DELAY_100US: equ 0Fh
+CH_CMD_SET_USB_ADDR: equ 13h
+CH_CMD_SET_USB_MODE: equ 15h
+CH_CMD_TEST_CONNECT: equ 16h
+CH_CMD_GET_STATUS: equ 22h
+CH_CMD_RD_USB_DATA0: equ 27h
+CH_CMD_WR_HOST_DATA: equ 2Ch
+CH_CMD_GET_DESCR: equ 46h
+CH_CMD_ISSUE_TKN_X: equ 4Eh
 
 ;--- PIDs
 
@@ -30,12 +45,43 @@ CH_PID_OUT: equ 01h
 
 ;--- Status codes
 
-CH_INT_SUCCESS: equ 14h
-CH_INT_CONNECT: equ 15h
-CH_INT_DISCONNECT: equ 16h
-CH_USB_INT_BUF_OVER: equ 17h
-CH_CMD_RET_SUCCESS: equ 51h
-CH_CMD_RET_ABORT: equ 5Fh
+CH_ST_INT_SUCCESS: equ 14h
+CH_ST_INT_CONNECT: equ 15h
+CH_ST_INT_DISCONNECT: equ 16h
+CH_ST_INT_BUF_OVER: equ 17h
+CH_ST_RET_SUCCESS: equ 51h
+CH_ST_RET_ABORT: equ 5Fh
+
+
+; -----------------------------------------------------------------------------
+; HW_TEST: Check if the USB host controller hardware is operational
+; -----------------------------------------------------------------------------
+; Output: Cy = 0 is hardware is operational, 1 if it's not
+
+HW_TEST:
+    ld a,34h
+    call _HW_TEST_DO
+    scf
+    ret nz
+
+    ld a,89h
+    call _HW_TEST_DO
+    scf
+    ret nz
+
+    or a
+    ret
+
+_HW_TEST_DO:
+    ld b,a
+    ld a,CH_CMD_CHECK_EXIST
+    out (CH_COMMAND_PORT),a
+    ld a,b
+    xor 0FFh
+    out (CH_DATA_PORT),a
+    in a,(CH_DATA_PORT)
+    cp b
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -50,13 +96,25 @@ CH_CMD_RET_ABORT: equ 5Fh
 ;         Cy = 1 if reset failed
 
 HW_RESET:
-    ld a,CH_RESET_ALL
+    ld a,CH_CMD_RESET_ALL
     out (CH_COMMAND_PORT),a
 
-    ld b,200
-    call CH_DELAY   ;35ms
+    call CH_WAIT_35
 
-    jp HW_DEV_CHANGE
+    call CH_DO_SET_NOSOF_MODE
+    ret c
+
+    ld a,CH_CMD_TEST_CONNECT
+    out (CH_COMMAND_PORT),a
+_CH_WAIT_TEST_CONNECT:
+    in a,(CH_DATA_PORT)
+    or a
+    jr z,_CH_WAIT_TEST_CONNECT
+    cp CH_ST_INT_DISCONNECT
+    ld a,-1
+    ret z
+
+    jp CH_DO_BUS_RESET
 
 
 ; -----------------------------------------------------------------------------
@@ -75,40 +133,18 @@ HW_RESET:
 ;         Cy = 1 if bus reset failed
 
 HW_DEV_CHANGE:
-    call CH_INT_IS_ACTIVE
+    call CH_CHECK_INT_IS_ACTIVE
     ld a,0
     ret nz
     
-    call CH_DO_GET_STATUS
-    cp CH_INT_CONNECT
-    jr z,_CH_DO_BUS_RESET
-    cp CH_INT_DISCONNECT
-    jr z,_CH_DO_SET_NOSOF_MODE
+    call CH_GET_STATUS
+    cp CH_ST_INT_CONNECT
+    jp z,CH_DO_BUS_RESET
+    cp CH_ST_INT_DISCONNECT
+    jp z,CH_DO_SET_NOSOF_MODE
 
     xor a
     ret
-
-_CH_DO_SET_NOSOF_MODE:
-    ld a,5
-    call CH_DO_SET_USB_MODE
-
-    ld a,-1
-    ret
-
-_CH_DO_BUS_RESET:
-   ld a,5
-   call CH_DO_SET_USB_MODE
-   ld a,1
-   ret c
-
-   ld b,200 ;35ms
-   call CH_DELAY 
-
-   ld a,7
-   call CH_DO_SET_USB_MODE
-
-   ld a,1
-   ret
 
 
 ; -----------------------------------------------------------------------------
@@ -122,7 +158,63 @@ _CH_DO_BUS_RESET:
 ;         A  = Device address
 ;         B  = Maximum packet size for endpoint 0
 ; Output: A  = Error code (one of USB_ERR_*)
-;         BC = Amount of data actually transferred
+;         BC = Amount of data actually transferred (if IN transfer and no error)
+
+HW_CONTROL_TRANSFER:
+    call CH_SET_TARGET_DEVICE_ADDRESS
+
+    push hl
+    push bc
+    push de
+
+    ld b,8
+    call CH_WRITE_DATA  ;Write SETUP data packet    
+
+    xor a
+    ld e,0
+    ld b,CH_PID_SETUP
+    call CH_ISSUE_TOKEN
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop hl  ;HL = Data address (was DE)
+    pop de  ;D  = Endpoint size (was B)
+    pop ix  ;IX = Address of setup packet (was HL)
+    or a
+    ld bc,0
+    ret nz  ;DONE if error
+
+    ld c,(ix+6)
+    ld b,(ix+7) ;BC = Data length
+    ld e,0      ;E  = Endpoint number
+    scf         ;Use toggle = 1
+    bit 7,(ix)
+    jr z,_CH_CONTROL_OUT_TRANSFER
+
+_CH_CONTROL_IN_TRANSFER:
+    call CH_DATA_IN_TRANSFER
+    or a
+    ret nz
+
+    push bc
+    ld bc,0
+    ld de,0800h     ;We request 0 bytes, actual max EP size not needed
+    scf             ;Use toggle 1
+    call CH_DATA_OUT_TRANSFER
+    pop bc
+    ret
+
+_CH_CONTROL_OUT_TRANSFER:
+    call CH_DATA_OUT_TRANSFER
+    or a
+    ret nz
+
+    push bc
+    ld bc,0
+    ld de,0800h     ;We request 0 bytes, actual max EP size not needed
+    scf             ;Use toggle 1
+    call CH_DATA_IN_TRANSFER
+    pop bc
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -141,25 +233,26 @@ _CH_DO_BUS_RESET:
 HW_DATA_IN_TRANSFER:
     call CH_SET_TARGET_DEVICE_ADDRESS
 
+; This entry point is used when target device address is already set
 CH_DATA_IN_TRANSFER:
-    rra
+    rra     ;Toggle to bit 7 of A
     ld ix,0 ;IX = Received so far count
     push de
     pop iy  ;IY = EP size + EP number
 
-CH_DATA_IN_LOOP:
+_CH_DATA_IN_LOOP:
     push af ;Toggle in bit 7
     push bc ;Remaining length
 
     ld e,iyl
     ld b,CH_PID_IN
-    call CH_DO_ISSUE_TOKEN
+    call CH_ISSUE_TOKEN
 
     call CH_WAIT_INT_AND_GET_RESULT
     or a
-    jr nz,CH_DATA_IN_DONE   ;DONE if error
+    jr nz,_CH_DATA_IN_DONE   ;DONE if error
 
-    call CH_DO_READ_DATA
+    call CH_READ_DATA
     ld b,0
     add ix,bc   ;Update received so far count
 
@@ -171,27 +264,27 @@ CH_DATA_IN_LOOP:
 
     ld a,c
     or a
-    jr z,CH_DATA_IN_DONE    ;DONE if no data received
+    jr z,_CH_DATA_IN_DONE    ;DONE if no data received
 
-    ex (sp),hl  ;Now HL = Remaining data
+    ex (sp),hl  ;Now HL = Remaining data length
     or a
-    sbc hl,bc   ;Now HL = Updated remaning data
+    sbc hl,bc   ;Now HL = Updated remaning data length
     ld a,b
     or c
-    ex (sp),hl  ;Remaining data is back on the stack
-    jr z,CH_DATA_IN_DONE    ;DONE if no data remaining
+    ex (sp),hl  ;Remaining data length is back on the stack
+    jr z,_CH_DATA_IN_DONE    ;DONE if no data remaining
 
     ld a,c
     cp iyh
-    jr c,CH_DATA_IN_DONE    ;DONE if transferred less than the EP size
+    jr c,_CH_DATA_IN_DONE    ;DONE if transferred less than the EP size
 
     pop bc
-    pop af  ;We need this to pass the next toggle to CH_DO_ISSUE_TOKEN
+    pop af  ;We need this to pass the next toggle to CH_ISSUE_TOKEN
 
-    jr CH_DATA_IN_LOOP
+    jr _CH_DATA_IN_LOOP
 
 ;Input: A=Error code, in stack: remaining length, new toggle
-CH_DATA_IN_DONE:
+_CH_DATA_IN_DONE:
     ld d,a
     pop bc
     pop af
@@ -214,44 +307,146 @@ CH_DATA_IN_DONE:
 ; Output: A  = Error code (one of USB_ERR_*)
 ;         Cy = New state of the toggle bit (even on error)
 
+HW_DATA_OUT_TRANSFER:
+    call CH_SET_TARGET_DEVICE_ADDRESS
 
-CH_DELAY:
-    ex (sp),hl
-    ex (sp),hl
-    djnz CH_DELAY
+; This entry point is used when target device address is already set
+CH_DATA_OUT_TRANSFER:
+    rra     ;Toggle to bit 6 of A
+    rra
+    push de
+    pop iy  ;IY = EP size + EP number
+
+_CH_DATA_OUT_LOOP:
+    push af ;Toggle in bit 6
+    push bc ;Remaining length
+
+    ld a,b 
+    or a
+    ld a,iyh
+    jr nz,_CH_DATA_OUT_DO
+    ld a,c
+    cp iyh
+    jr c,_CH_DATA_OUT_DO
+    ld a,iyh
+
+_CH_DATA_OUT_DO:
+    ;Here, A = Length of the next transfer: min(remaining length, EP size)
+
+    pop hl
+    ld e,a
+    ld d,0
+    or a
+    sbc hl,de
+    push hl     ;Updated remaining data length to the stack
+
+    ld b,a
+    call CH_WRITE_DATA
+
+    pop bc
+    pop af  ;Retrieve toggle
+    push af
+    push bc
+
+    ld e,iyl
+    ld b,CH_PID_OUT
+    call CH_ISSUE_TOKEN
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    jr nz,_CH_DATA_OUT_DONE   ;DONE if error
+
+    pop de
+    pop af
+    xor 40h     ;Update toggle
+    push af
+
+    ld a,d
+    or e
+    jr z,_CH_DATA_OUT_DONE_2  ;DONE if no more data to transfer
+
+    pop af  ;We need this to pass the next toggle to CH_ISSUE_TOKEN
+
+    jr _CH_DATA_OUT_LOOP
+
+;Input: A=Error code, in stack: remaining length, new toggle
+_CH_DATA_OUT_DONE:
+    pop bc
+_CH_DATA_OUT_DONE_2:
+    ld d,a
+    pop af
+    rla ;Toggle back to Cy
+    rla
+    ld a,d
     ret
 
-;Z if active, NZ if not active
-CH_INT_IS_ACTIVE:
+
+; =============================================================================
+; Auxiliary routines
+; =============================================================================
+
+
+; --------------------------------------
+; CH_WAIT_35: Wait 35ms
+
+CH_WAIT_35:
+    ld bc,CH_RESET_WAIT_AMOUNT
+_CH_DELAY_LOOP:
+    ld a,CH_CMD_DELAY_100US
+    out (CH_COMMAND_PORT),a
+_CH_DELAY_WAIT:
+    in a,(CH_DATA_PORT)
+    or a
+    jr z,_CH_DELAY_WAIT
+    dec bc
+    ld a,b
+    or c
+    jr nz,_CH_DELAY_LOOP
+    ret
+
+
+; --------------------------------------
+; CH_CHECK_INT_IS_ACTIVE
+;
+; Output: Z if active, NZ if not active
+
+CH_CHECK_INT_IS_ACTIVE:
     in a,(CH_COMMAND_PORT)
     and 80h
     ret
 
-;Wait for INT to get active, execute GET_STATUS, and return the matching USB_ERR_*
-CH_WAIT_INT_AND_GET_RESULT:
-    call CH_INT_IS_ACTIVE
-    jr nz,CH_WAIT_INT_AND_GET_STATUS
-    call CH_DO_GET_STATUS
 
-    cp CH_CMD_RET_SUCCESS
+; --------------------------------------
+; CH_WAIT_INT_AND_GET_RESULT
+;
+; Wait for INT to get active, execute GET_STATUS, and return the matching USB_ERR_*
+;
+; Output: A = Result of GET_STATUS (one of USB_ERR_*)
+
+CH_WAIT_INT_AND_GET_RESULT:
+    call CH_CHECK_INT_IS_ACTIVE
+    jr nz,CH_WAIT_INT_AND_GET_RESULT
+
+    call CH_GET_STATUS
+
+    cp CH_ST_RET_SUCCESS
     ld b,USB_ERR_OK
     jr z,_CH_LD_A_B_RET
-    cp CH_INT_SUCCESS
+    cp CH_ST_INT_SUCCESS
     jr z,_CH_LD_A_B_RET
-    cp CH_INT_DISCONNECT
-    ld b,USB_ERR_NO_DEVICE  ;TODO: Set NO SOF mode
-    jr z,_CH_LD_A_B_RET
-    cp CH_USB_INT_BUF_OVER
+    cp CH_ST_INT_DISCONNECT
+    jr z,_CH_NO_DEV_ERR
+    cp CH_ST_INT_BUF_OVER
     ld b,USB_ERR_DATA_ERROR
     jr z,_CH_LD_A_B_RET
 
     and 2Fh
 
     cp 2Ah
-    ld a,USB_ERR_NAK
+    ld b,USB_ERR_NAK    ;Should never occur as the CH376 retries NAKs forever
     jr z,_CH_LD_A_B_RET
     cp 2Eh
-    ld a,USB_ERR_STALL
+    ld b,USB_ERR_STALL
     jr z,_CH_LD_A_B_RET
 
     and 23h
@@ -266,45 +461,116 @@ _CH_LD_A_B_RET:
     ld a,b
     ret
 
+_CH_NO_DEV_ERR:
+    call CH_DO_SET_NOSOF_MODE
+    ld a,USB_ERR_NO_DEVICE
+    ret
 
-CH_DO_GET_STATUS:
-    ld a,CH_GET_STATUS
+
+; --------------------------------------
+; CH_GET_STATUS
+;
+; Output: A = Status code
+
+CH_GET_STATUS:
+    ld a,CH_CMD_GET_STATUS
     out (CH_COMMAND_PORT),a
     in a,(CH_DATA_PORT)
     ret
 
-;Input: A = mode
-;Output: Cy = 1 on error
-CH_DO_SET_USB_MODE:
+
+; --------------------------------------
+; CH_SET_NOSOF_MODE: Sets USB host mode without SOF
+;
+; This needs to run when a device disconnection is detected
+;
+; Output: A  = -1
+;         Cy = 1 on error
+
+CH_DO_SET_NOSOF_MODE:
+    ld a,5
+    call CH_SET_USB_MODE
+
+    ld a,-1
+    ret
+
+
+; --------------------------------------
+; CH_DO_BUS_RESET: Performs a USB bus reset, then sets USB host mode with SOF
+;
+; This needs to run when a device connection is detected
+;
+; Output: A  = 1
+;         Cy = 1 on error
+
+CH_DO_BUS_RESET:
+    ld a,7
+    call CH_SET_USB_MODE
+    ld a,1
+    ret c
+
+    ld a,6
+    call CH_SET_USB_MODE
+
+    ld a,1
+    ret
+
+
+; --------------------------------------
+; CH_SET_USB_MODE
+;
+; Input: A = new USB mode:
+;            5: Host, no SOF
+;            6: Host, generate SOF
+;            7: Host, generate SOF + bus reset
+; Output: Cy = 1 on error
+
+CH_SET_USB_MODE:
     ld b,a
-    ld a,CH_SET_USB_MODE
+    ld a,CH_CMD_SET_USB_MODE
     out (CH_COMMAND_PORT),a
     ld a,b
     out (CH_DATA_PORT),a
 
-    ld b,200
+    ld b,255
 _CH_WAIT_USB_MODE:
     in a,(CH_DATA_PORT)
-    cp CH_CMD_RET_SUCCESS
+    cp CH_ST_RET_SUCCESS
     ret z
     djnz _CH_WAIT_USB_MODE
     scf
     ret
 
+
+; --------------------------------------
+; CH_SET_TARGET_DEVICE_ADDRESS
+;
+; Set target USB device address for operation
+;
+; Input: A = Device address
+
 CH_SET_TARGET_DEVICE_ADDRESS:
     push af
-    ld a,CH_SET_USB_ADDR
+    ld a,CH_CMD_SET_USB_ADDR
     out (CH_COMMAND_PORT),a
     pop af
     out (CH_DATA_PORT),a
     ret
 
-;E=Endpoint
-;B=PID
-;A=IN toggle in bit 7, OUT toggle in bit 6
-CH_DO_ISSUE_TOKEN:
+
+; --------------------------------------
+; CH_ISSUE_TOKEN
+;
+; Send a token to the current target USB device
+;
+; Input: E = Endpoint number
+;        B = PID, one of CH_PID_*
+;        A = Toggle bit in bit 7 (for IN transfer)
+;            Toggle bit in bit 6 (for OUt transfer)
+
+CH_ISSUE_TOKEN:
     ld d,a
-    ld a,CH_ISSUE_TKN_X
+    ld a,CH_CMD_ISSUE_TKN_X
     out (CH_COMMAND_PORT),a
     ld a,d
     out (CH_DATA_PORT),a    ;Toggles
@@ -318,11 +584,18 @@ CH_DO_ISSUE_TOKEN:
     out (CH_DATA_PORT),a    ;Endpoint | PID
     ret
 
-;HL = Buffer
-;Output: C = Actually read amount
-;HL = HL + C
-CH_DO_READ_DATA:
-    ld a,RD_USB_DATA0
+
+; --------------------------------------
+; CH_READ_DATA
+;
+; Read data from the CH data buffer
+;
+; Input:  HL = Destination address for the data
+; Output: C  = Amount of data received (0-64)
+;         HL = HL + C
+
+CH_READ_DATA:
+    ld a,CH_CMD_RD_USB_DATA0
     out (CH_COMMAND_PORT),a
     in a,(CH_DATA_PORT)
     ld c,a
@@ -334,5 +607,30 @@ _CH_READ_DATA_LOOP:
     ld (hl),a
     inc hl
     djnz _CH_READ_DATA_LOOP
+
+    ret
+
+
+; --------------------------------------
+; CH_WRITE_DATA
+;
+; Write data to the CH data buffer
+;
+; Input:  HL = Source address of the data
+;         B  = Length of the data
+; Output: HL = HL + C
+
+CH_WRITE_DATA:
+    ld a,CH_CMD_WR_HOST_DATA
+    out (CH_COMMAND_PORT),a
+    ld a,b
+    out (CH_DATA_PORT),a
+    or a
+    ret z
+_CH_WRITE_DATA_LOOP:
+    ld a,(hl)
+    out (CH_DATA_PORT),a
+    inc hl
+    djnz _CH_WRITE_DATA_LOOP
 
     ret
