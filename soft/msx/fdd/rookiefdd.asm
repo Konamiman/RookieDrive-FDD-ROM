@@ -14,6 +14,9 @@
     include "inihrd.asm"
     include "dskio_dskchg.asm"
     include "choice_dskfmt.asm"
+    include "usb.asm"
+
+    ;USB host controller hardware dependant code
 
     include "ch376.asm"
 

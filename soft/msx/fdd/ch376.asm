@@ -235,6 +235,7 @@ HW_DATA_IN_TRANSFER:
 
 ; This entry point is used when target device address is already set
 CH_DATA_IN_TRANSFER:
+    ld a,0
     rra     ;Toggle to bit 7 of A
     ld ix,0 ;IX = Received so far count
     push de
@@ -250,7 +251,7 @@ _CH_DATA_IN_LOOP:
 
     call CH_WAIT_INT_AND_GET_RESULT
     or a
-    jr nz,_CH_DATA_IN_DONE   ;DONE if error
+    jr nz,_CH_DATA_IN_ERR   ;DONE if error
 
     call CH_READ_DATA
     ld b,0
@@ -283,8 +284,10 @@ _CH_DATA_IN_LOOP:
 
     jr _CH_DATA_IN_LOOP
 
-;Input: A=Error code, in stack: remaining length, new toggle
+;Input: A=Error code (if ERR), in stack: remaining length, new toggle
 _CH_DATA_IN_DONE:
+    xor a
+_CH_DATA_IN_ERR:
     ld d,a
     pop bc
     pop af
@@ -312,6 +315,7 @@ HW_DATA_OUT_TRANSFER:
 
 ; This entry point is used when target device address is already set
 CH_DATA_OUT_TRANSFER:
+    ld a,0
     rra     ;Toggle to bit 6 of A
     rra
     push de
@@ -425,7 +429,7 @@ CH_CHECK_INT_IS_ACTIVE:
 
 CH_WAIT_INT_AND_GET_RESULT:
     call CH_CHECK_INT_IS_ACTIVE
-    jr nz,CH_WAIT_INT_AND_GET_RESULT
+    jr nz,CH_WAIT_INT_AND_GET_RESULT    ;TODO: Perhaps add a timeout check here?
 
     call CH_GET_STATUS
 
