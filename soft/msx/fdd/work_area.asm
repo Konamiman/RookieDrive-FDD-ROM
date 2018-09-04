@@ -3,7 +3,6 @@
 ; +0: Bulk OUT endpoint parameters
 ; +1: Bulk IN endpoint parameters
 ; +2: Interrupt IN endpoint parameters
-;     bit 7 set if the device has been assigned an address already
 ;
 ; Endpoint parameters are:
 ;   bits 3-0: Endpoint number
@@ -27,6 +26,7 @@
 ;Input: A = Size
 ;       B = work area byte (0-2)
 WK_SET_EP_SIZE:
+    push ix
     call WK_GET_POINTER
 
     ld c,0
@@ -45,25 +45,30 @@ _WK_SET_EP_SIZE_DO:
     rrc c
     rrc c
     ld a,(hl)
-    and 11001111
+    and 11001111b
     or c
     ld (hl),a
+    pop ix
     ret
 
 
 ;Zero the entire work area
 WK_ZERO:
+    push ix
     call GETWRK
     ld (ix),0
     ld (ix+1),0
     ld (ix+2),0
+    pop ix
     ret
 
 
 ;Input:  B = work area byte (0-2)
 ;Output: B = size
 WK_GET_EP_SIZE:
+    push ix
     call WK_GET_POINTER
+    pop ix
     ld a,(hl)
     rlca
     rlca
@@ -80,32 +85,24 @@ WK_GET_EP_SIZE:
     dec a
     ret z
     sla b
+
     ret
 
 
 ;Z if work area is zeroed, NZ if it has contents
 WK_HAS_CONTENTS:
+    push ix
     call GETWRK
     ld a,(hl)
     or a
-    ret
-
-
-WK_SET_DEVICE_HAS_ADDRESS:
-    call GETWRK
-    set 7,(ix+2)
-    ret
-
-
-WK_GET_DEVICE_HAS_ADDRESS:
-    call GETWRK
-    bit 7,(ix+2)
+    pop ix
     ret
 
 
 ;Input: A = EP number
 ;       B = work area byte (0-2)
 WK_SET_EP_NUMBER:
+    push ix
     call WK_GET_POINTER
     and 1111b
     ld c,a
@@ -113,18 +110,22 @@ WK_SET_EP_NUMBER:
     and 11110000b
     or c
     ld (hl),a
+    pop ix
     ret
 
 
 ;Input: Cy = toggle bit
 ;       B = work area byte (0-2)
 WK_SET_TOGGLE_BIT:
+    push ix
     call WK_GET_POINTER
     jr c,_WK_SET_TOGGLE_BIT_1
     res 4,(hl)
+    pop ix
     ret
 _WK_SET_TOGGLE_BIT_1:
     set 4,(hl)
+    pop ix
     ret
 
 

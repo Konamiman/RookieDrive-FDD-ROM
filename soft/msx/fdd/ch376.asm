@@ -14,7 +14,7 @@ USB_ERR_STALL: equ 2
 USB_ERR_TIMEOUT: equ 3
 USB_ERR_DATA_ERROR: equ 4
 USB_ERR_NO_DEVICE: equ 5
-USB_ERR_OTHER: equ 255
+USB_ERR_OTHER: equ 9
 
 CH_RESET_WAIT_AMOUNT: equ 1    ;35 for real hardware, can be less when using Noobtocol
 
@@ -270,8 +270,8 @@ _CH_DATA_IN_LOOP:
     ex (sp),hl  ;Now HL = Remaining data length
     or a
     sbc hl,bc   ;Now HL = Updated remaning data length
-    ld a,b
-    or c
+    ld a,h
+    or l
     ex (sp),hl  ;Remaining data length is back on the stack
     jr z,_CH_DATA_IN_DONE    ;DONE if no data remaining
 

@@ -5561,10 +5561,10 @@ A5FBE:	and	00CH
 
 GETWRK:
 A5FC2:	call	A5FCD			; get my SLTWRK entry
-	ld	a,(hl)
-	inc	hl
-	ld	h,(hl)
-	ld	l,a			; pointer to workarea
+	;ld	a,(hl)
+	;inc	hl
+	;ld	h,(hl)
+	;ld	l,a			; pointer to workarea
 	push	hl
 	pop	ix
 	ret
