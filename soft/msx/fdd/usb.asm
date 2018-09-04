@@ -35,8 +35,17 @@ INIT_USB_DEV:
     pop de
     push de
 
+    if HW_IMPL_GET_DEV_DESCR = 1
+
+    xor a
+    call HW_GET_DEV_DESCR
+
+    else
+
     ld hl,USB_CMD_GET_DEV_DESC_8
     call USB_CONTROL_TRANSFER_0
+
+    endif
 
     pop ix
     or a
@@ -51,8 +60,18 @@ INIT_USB_DEV:
 
     pop de
     push de
+
+    if HW_IMPL_GET_CONFIG_DESCR = 1
+
+    xor a
+    call HW_GET_CONFIG_DESCR
+
+    else
+
     ld hl,USB_CMD_GET_CONFIG_DESC
     call USB_CONTROL_TRANSFER_0
+
+    endif
 
     pop ix
     or a
@@ -210,11 +229,19 @@ _INIT_USB_SKIP_DESC:
     add ix,de
     ret
 
+    if HW_IMPL_GET_DEV_DESCR = 0
+
 USB_CMD_GET_DEV_DESC_8:
     db 80h, 6, 0, 1, 0, 0, 8, 0
 
+    endif
+
+    if HW_IMPL_GET_CONFIG_DESCR = 0
+
 USB_CMD_GET_CONFIG_DESC:
     db 80h, 6, 0, 2, 0, 0, 128, 0
+
+    endif
 
 USB_CMD_SET_ADDRESS:
     db 0, 5, 1, 0, 0, 0, 0, 0

@@ -10,16 +10,20 @@
     include "const.asm"
 
     include "kernel.asm"
+
     include "driver.asm"
     include "inihrd_inienv.asm"
     include "dskio_dskchg.asm"
     include "choice_dskfmt.asm"
     include "work_area.asm"
-    include "usb.asm"
 
-    ;USB host controller hardware dependant code
+    ;USB host controller hardware dependant code.
+    ;This needs to be placed before usb.asm 
+    ;because of the HW_IMPL_* constants.
 
     include "ch376.asm"
+
+    include "usb.asm"
 
 HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
 

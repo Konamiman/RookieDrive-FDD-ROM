@@ -18,6 +18,12 @@ USB_ERR_OTHER: equ 9
 
 CH_RESET_WAIT_AMOUNT: equ 1    ;35 for real hardware, can be less when using Noobtocol
 
+;--- Routine implementation constants
+;    HW_IMPL_(routine) needs to be 1 if HW_(routine) is implemented
+
+HW_IMPL_GET_DEV_DESCR: equ 1
+HW_IMPL_GET_CONFIG_DESCR: equ 1
+
 ;--- CH376 port to Z80 ports mapping
 
 CH_DATA_PORT: equ 20h
@@ -638,3 +644,48 @@ _CH_WRITE_DATA_LOOP:
     djnz _CH_WRITE_DATA_LOOP
 
     ret
+
+
+    if HW_IMPL_GET_DEV_DESCR = 1
+
+; Input:  DE = Address of the input or output data buffer
+;         A  = Device address
+; Output: A  = Error code (one of USB_ERR_*)
+    
+HW_GET_DEV_DESCR:
+    ld b,1
+    jr CH_GET_DESCR
+
+    endif
+
+    if HW_IMPL_GET_CONFIG_DESCR = 1
+
+HW_GET_CONFIG_DESCR:
+    ld b,2
+    jr CH_GET_DESCR
+
+    endif
+
+    if HW_IMPL_GET_DEV_DESCR = 1 or HW_IMPL_GET_CONFIG_DESCR = 1
+
+CH_GET_DESCR:
+    push bc
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    
+    ld a,CH_CMD_GET_DESCR
+    out (CH_COMMAND_PORT),a
+    pop af
+    out (CH_DATA_PORT),a
+
+    push de
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop hl
+    or a
+    ret nz
+
+    call CH_READ_DATA
+    ld b,0
+    xor a
+    ret
+
+    endif

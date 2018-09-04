@@ -48,8 +48,8 @@ RESET_AND_PRINT_INFO:
 
     call INIT_USB_DEV
     ;xor a
-    ;nop
-    ;nop
+    nop
+    nop
     or a
     ld hl,YES_CBI_DEV_S
     jp z,PRINT
