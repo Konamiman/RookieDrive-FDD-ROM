@@ -3,6 +3,7 @@
 ; +0: Bulk OUT endpoint parameters
 ; +1: Bulk IN endpoint parameters
 ; +2: Interrupt IN endpoint parameters
+; +3: Interface number for the ADSC setup packet
 ;
 ; Endpoint parameters are:
 ;   bits 3-0: Endpoint number
@@ -114,6 +115,17 @@ WK_SET_EP_NUMBER:
     ret
 
 
+;Input:  B = work area byte (0-2)
+;Output: A - EP number
+WK_GET_EP_NUMBER:
+    push ix
+    call WK_GET_POINTER
+    ld a,(ix)
+    and 1111b
+    pop ix
+    ret
+
+
 ;Input: Cy = toggle bit
 ;       B = work area byte (0-2)
 WK_SET_TOGGLE_BIT:
@@ -126,6 +138,18 @@ WK_SET_TOGGLE_BIT:
 _WK_SET_TOGGLE_BIT_1:
     set 4,(hl)
     pop ix
+    ret
+
+;Input:  B = work area byte (0-2)
+;Output: Cy = toggle bit
+WK_GET_TOGGLE_BIT:
+    push ix
+    call WK_GET_POINTER
+    bit 4,(hl)
+    pop ix
+    scf
+    ret nz
+    ccf
     ret
 
 
@@ -141,5 +165,20 @@ WK_GET_POINTER:
     pop af
     ret
 
+WK_SET_IFACE_NUMBER:
+    push ix
+    push af
+    call GETWRK
+    pop af
+    ld (ix+3),a
+    pop ix
+    ret
+
+WK_GET_IFACE_NUMBER:
+    push ix
+    call GETWRK
+    ld (ix+3),a
+    pop ix
+    ret
 
     
