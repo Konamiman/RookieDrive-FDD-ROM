@@ -42,13 +42,15 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="Z80dotNet, Version=1.0.5.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\Z80dotNet\Main\bin\Release\Z80dotNet.dll</HintPath>
+      <HintPath>..\packages\Z80dotNet.1.0.5.0\lib\net40-Client\Z80dotNet.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Usb\CH376PortsViaNoobtocol.cs">
       <Link>Usb\CH376PortsViaNoobtocol.cs</Link>
+    </Compile>
+    <Compile Include="..\Usb\CH376PortsViaOpc.cs">
+      <Link>Usb\CH376PortsViaOpc.cs</Link>
     </Compile>
     <Compile Include="..\Usb\CH376UsbHostHardware.cs">
       <Link>Usb\CH376UsbHostHardware.cs</Link>
@@ -107,6 +109,9 @@
     <Compile Include="..\Usb\UsbPacketResult.cs">
       <Link>Usb\UsbPacketResult.cs</Link>
     </Compile>
+    <Compile Include="..\Usb\UsbServiceProvider.cs">
+      <Link>Usb\UsbServiceProvider.cs</Link>
+    </Compile>
     <Compile Include="..\Usb\UsbSetupPacket.cs">
       <Link>Usb\UsbSetupPacket.cs</Link>
     </Compile>
@@ -124,7 +129,9 @@
     <Compile Include="RookieDrivePorts.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <None Include="packages.config">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Content Include="NuGetIcon.png" />

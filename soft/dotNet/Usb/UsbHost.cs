@@ -21,6 +21,8 @@ namespace Konamiman.RookieDrive.Usb
 
         public byte[] ConnectedDeviceAddresses => connectedDevice == null ? NoDevices : UsbDeviceAddressArray;
 
+        public IUsbHostHardware HostHardware => hw;
+
         public UsbConnectedDevice GetConnectedDeviceInfo(byte deviceAddress)
         {
             if (deviceAddress != UsbDeviceAddress)
@@ -145,7 +147,7 @@ namespace Konamiman.RookieDrive.Usb
             result = hw.ExecuteControlTransfer(setConfigSetupPacket, null, 0, UsbDeviceAddress, endpointZeroMaxPacketSize);
             if (result.IsError)
                 throw new UsbTransferException($"When setting device configuration: {result.TransactionResult}", result.TransactionResult);
-
+              
             //Here device is in CONFIGURED state
 
             var interfacesInfo = GetInterfacesInfo(data.Take(configurationDescriptorLength).ToArray());

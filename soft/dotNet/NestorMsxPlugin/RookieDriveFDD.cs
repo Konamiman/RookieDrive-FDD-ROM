@@ -56,7 +56,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             this.kernelContents = File.ReadAllBytes(kernelFilePath);
             ValidateKernelFileContents(kernelContents);
 
-            host = new UsbHost(new CH376UsbHostHardware(new CH376PortsViaNoobtocol("COM4")));
+            host = new UsbHost(new CH376UsbHostHardware(UsbServiceProvider.GetCH376Ports()));
             UpdateCbiInstance();
 
         }

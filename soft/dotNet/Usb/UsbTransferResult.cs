@@ -28,5 +28,9 @@ namespace Konamiman.RookieDrive.Usb
         public int NextTogleBit { get; }
 
         public bool IsError => TransactionResult != UsbPacketResult.Ok;
+
+        public bool IsStallError => TransactionResult == UsbPacketResult.Stall;
+
+        public bool IsErrorButNotStall => IsError && !IsStallError;
     }
 }

@@ -9,6 +9,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sandbox", "Sandbox\Sandbox.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NestorMsxPlugin", "NestorMsxPlugin\NestorMsxPlugin.csproj", "{D64CA3D0-5A50-47C9-9BA5-A53C5AD26600}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{56E155AD-77DA-46C8-BE70-2B16DE66209B}"
+	ProjectSection(SolutionItems) = preProject
+		OpcClientLibrary.dll = OpcClientLibrary.dll
+		OpcClientLibrary.pdb = OpcClientLibrary.pdb
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

@@ -23,6 +23,7 @@ namespace Konamiman.RookieDrive.Usb
         const byte INT_CONNECT = 0x15;
         const byte INT_DISCONNECT = 0x16;
         const byte USB_INT_BUF_OVER = 0x17;
+        const byte CMD_CLR_STALL = 0x41;
         const byte CMD_RET_SUCCESS = 0x51;
         const byte CMD_RET_ABORT = 0x5F;
 
@@ -106,7 +107,6 @@ namespace Konamiman.RookieDrive.Usb
 
         public UsbTransferResult ExecuteControlTransfer(UsbSetupPacket setupPacket, byte[] dataBuffer, int dataBufferIndex, int deviceAddress, int endpointPacketSize, int endpointNumber = 0)
         {
-            var toggle = 0;
             var requestedDataLength = (int)setupPacket.wLength;
             var remainingDataLength = requestedDataLength;
             UsbPacketResult result;
@@ -131,15 +131,15 @@ namespace Konamiman.RookieDrive.Usb
 
             //Status
 
-            if(setupPacket.DataDirection == UsbDataDirection.IN)
-                result = RepeatWhileNak(() => {
-                    WriteUsbData(noData);
-                    IssueToken(endpointNumber, PID_OUT, 0, 1);
-                });
-            else
+            if(setupPacket.DataDirection == UsbDataDirection.OUT || requestedDataLength == 0)
                 result = RepeatWhileNak(() => {
                     IssueToken(endpointNumber, PID_IN, 1, 0);
                     ReadUsbData(null);
+                });
+            else
+                result = RepeatWhileNak(() => {
+                    WriteUsbData(noData);
+                    IssueToken(endpointNumber, PID_OUT, 0, 1);
                 });
 
             if (result != UsbPacketResult.Ok)
@@ -182,11 +182,9 @@ namespace Konamiman.RookieDrive.Usb
             ch.WriteCommand(RD_USB_DATA0);
             var length = ch.ReadData();
 
+            var data2 = ch.ReadMultipleData(length);
             if (data != null)
-            {
-                var data2 = ch.ReadMultipleData(length);
                 Array.Copy(data2, 0, data, index, length);
-            }
 
             return length;
         }
@@ -312,6 +310,16 @@ namespace Konamiman.RookieDrive.Usb
             var length = ReadUsbData(descriptorBytes);
             descriptorBytes = descriptorBytes.Take(length).ToArray();
             return new UsbTransferResult(length, 0);
+        }
+
+        public UsbTransferResult ClearEndpointHalt(int deviceAddress, byte endpointNumber)
+        {
+            SetTargetDeviceAddress(deviceAddress);
+
+            ch.WriteCommand(CMD_CLR_STALL);
+            ch.WriteData(endpointNumber);
+            var result = WaitAndGetResult();
+            return new UsbTransferResult(result);
         }
     }
 }
