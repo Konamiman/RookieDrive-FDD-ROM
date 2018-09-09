@@ -161,7 +161,7 @@ _INIT_USB_BULK_EP:
     ld a,(ix+2) ;EP address + type
     ld c,a
     rlca
-    and 1       ;Now B = index in the work area
+    and 1 ;Now B = index in the work area
     ld b,a
 
     ld a,c
@@ -185,11 +185,23 @@ _INIT_USB_NEXT_EP:
 
     ;--- Assign an address to the device
 
+    if HW_IMPL_SET_ADDRESS = 1
+
+    ld a,USB_DEVICE_ADDRESS
+    call HW_SET_ADDRESS
+    push iy
+    pop ix
+
+    else
+
     push iy
     ld hl,USB_CMD_SET_ADDRESS
     ld de,0 ;No data will be actually transferred
     call USB_CONTROL_TRANSFER_0
     pop ix
+
+    endif
+
     or a
     jr nz,_INIT_USB_DEV_ERR
 
@@ -198,6 +210,14 @@ _INIT_USB_NEXT_EP:
     ;--- Assign the first configuration to the device
 
     ld a,(ix+5) ;bConfigurationValue in the configuration descriptor
+
+    if HW_IMPL_SET_CONFIG = 1
+
+    ld b,a
+    ld a,USB_DEVICE_ADDRESS
+    call HW_SET_CONFIG
+
+    else
 
     push ix
     pop de
@@ -211,6 +231,9 @@ _INIT_USB_NEXT_EP:
 
     ld de,0 ;No data will be actually transferred
     call USB_CONTROL_TRANSFER
+
+    endif
+
     or a
     jr z,_INIT_USB_DEV_END
 
@@ -256,8 +279,12 @@ USB_CMD_GET_CONFIG_DESC:
 USB_CMD_SET_ADDRESS:
     db 0, 5, 1, 0, 0, 0, 0, 0
 
+    if HW_IMPL_SET_CONFIG = 0
+
 USB_CMD_SET_CONFIGURATION:
     db 0, 9, 255, 0, 0, 0, 0, 0 ;Needs actual configuration value in 3rd byte
+
+    endif
 
 
 ; -----------------------------------------------------------------------------
@@ -289,7 +316,7 @@ _USB_CONTROL_TRANSFER_DO:
     push hl
 
     push af
-    ld b,0
+    ld b,2
     call WK_GET_EP_SIZE ;Now B = Max endpoint 0 packet size
     pop af
 
@@ -320,27 +347,28 @@ USB_DATA_IN_TRANSFER:
     push hl
     push bc
 
-    ld b,0
+    ld b,1
     jr c,_USB_DATA_IN_INT
 
 _USB_DATA_IN_BULK:
-    inc b
     call WK_GET_EP_NUMBER
     ld e,a
     ld b,1
     call WK_GET_EP_SIZE
     ld d,b
+    ld b,1
     jr _USB_DATA_IN_GO
 
 _USB_DATA_IN_INT:
+    inc b
     call WK_GET_EP_NUMBER
     ld e,a
     ld d,2  ;Endpoint size
-    ld b,0
+    ld b,d
 
 _USB_DATA_IN_GO:
 
-    ;* Here E = Endpoint number except bit 7, D = Endpoint size, B=0 for bulk or 1 for int
+    ;* Here E = Endpoint number except bit 7, D = Endpoint size, B=1 for bulk or 2 for int
 
     push bc ;We'll need B to update the toggle bit
 
@@ -404,10 +432,10 @@ USB_EXECUTE_CBI:
 
 _USB_EXE_CBI_STEP_1:
 
-    push de
-    push bc
-    push af
-    push hl
+    push de ;Data buffer address
+    push bc ;Data length
+    push af ;Command first byte + toggle bit
+    push hl ;Command address
 
     push ix
     pop de
@@ -417,6 +445,7 @@ _USB_EXE_CBI_STEP_1:
     call WK_GET_IFACE_NUMBER
     ld (ix+4),a
     pop de  ;DE = Command (was HL)
+    ;* 3 items remaining in stack
     ld a,(de)
     ld (ix+6),a ;Command length
     inc de  ;Start of command
@@ -457,6 +486,7 @@ _USB_EXE_CBI_DATA_IN:
     pop hl  ;was DE
     or a
     push af
+    ;* 1 item remaining in stack
     push ix
     call USB_DATA_IN_TRANSFER
     pop ix
@@ -478,12 +508,13 @@ _USB_EXE_CBI_DATA_IN:
 _USB_EXE_CBI_DATA_OUT:
     ;TODO...
 
-    ;>>> STEP 3: Get status on IN endpoint
+    ;>>> STEP 3: Get status from INT endpoint
 
 _USB_EXE_CBI_STEP_3:
     push ix
     pop hl
     push bc ;We need to save the amount of data received
+    ;* 2 items in stack
     ld bc,2
     scf
     push ix
@@ -491,11 +522,16 @@ _USB_EXE_CBI_STEP_3:
     pop ix
 
     or a
+    pop hl  ;was BC
+    pop de  ;was AF
     jr z,_USB_EXE_CBI_STEP_3_1
     cp USB_ERR_STALL
-    jp nz,_USB_EXE_CBI_POP2_END
+    jp nz,_USB_EXE_CBI_END
 
+    push de
     pop af
+    push hl
+    ;* 1 item in stack
     cp REQUEST_SENSE_CMD_CODE   ;Do not try request sense if that's what we are trying to execute now
     ld a,USB_ERR_STALL    
     jr z,_USB_EXE_CBI_POP1_END
@@ -507,6 +543,8 @@ _USB_EXE_CBI_STEP_3:
     jr z,_USB_EXE_DO_REQUEST_SENSE  ;No data received from INT endpoint?
 
     ;>>> STEP 3.1: If ASC=0 we're done, otherwise clear error with Reques Sense
+
+_USB_EXE_CBI_STEP_3_1:
 
     ld a,(ix)
     or a

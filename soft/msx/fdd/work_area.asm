@@ -116,11 +116,11 @@ WK_SET_EP_NUMBER:
 
 
 ;Input:  B = work area byte (0-2)
-;Output: A - EP number
+;Output: A = EP number
 WK_GET_EP_NUMBER:
     push ix
     call WK_GET_POINTER
-    ld a,(ix)
+    ld a,(hl)
     and 1111b
     pop ix
     ret
@@ -177,7 +177,7 @@ WK_SET_IFACE_NUMBER:
 WK_GET_IFACE_NUMBER:
     push ix
     call GETWRK
-    ld (ix+3),a
+    ld a,(ix+3)
     pop ix
     ret
 

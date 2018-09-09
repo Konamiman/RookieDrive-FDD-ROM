@@ -48,11 +48,14 @@ RESET_AND_PRINT_INFO:
 
     call INIT_USB_DEV
     ;xor a
-    nop
-    nop
+    ;inc a
+    ;nop
     or a
     ld hl,YES_CBI_DEV_S
-    jp z,PRINT
+    push af
+    call z,PRINT
+    pop af
+    jp z,DO_INQUIRY
 
     dec a
     ld hl,NO_CBI_DEV_S
@@ -80,6 +83,29 @@ PRINT:
 	inc hl
 	jr PRINT
 
+DO_INQUIRY:
+    ld hl,INIQUIRY_CMD
+    ld de,9000h
+    ld bc,36
+    or a
+    call USB_EXECUTE_CBI
+    or a
+    ld hl,ERR_INQUIRY_S
+    jp nz,PRINT
+
+    xor a
+    ld (9000h+36),a
+    ld hl,9000h+8
+    call PRINT
+    ret
+
+GET_CONFIG_CMD:
+    db 80h, 8, 0, 0, 0, 0, 1, 0
+
+INIQUIRY_CMD:
+    db 12
+    db 12h, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0
+  
 ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10
 	db "(c) Konamiman 2018",13,10
@@ -105,6 +131,9 @@ RESERR_S:
 
 DEVERR_S:
     db  "ERROR querying or initializing USB device: ",0
+
+ERR_INQUIRY_S:
+    db  "ERROR querying the device name",0
 
 DEV_DESC:
     db 80h, 6, 0, 1, 0, 0, 20, 0 

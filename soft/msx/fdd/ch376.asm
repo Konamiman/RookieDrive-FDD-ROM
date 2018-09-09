@@ -23,6 +23,8 @@ CH_RESET_WAIT_AMOUNT: equ 1    ;35 for real hardware, can be less when using Noo
 
 HW_IMPL_GET_DEV_DESCR: equ 1
 HW_IMPL_GET_CONFIG_DESCR: equ 1
+HW_IMPL_SET_CONFIG: equ 1
+HW_IMPL_SET_ADDRESS: equ 1
 
 ;--- CH376 port to Z80 ports mapping
 
@@ -40,7 +42,9 @@ CH_CMD_TEST_CONNECT: equ 16h
 CH_CMD_GET_STATUS: equ 22h
 CH_CMD_RD_USB_DATA0: equ 27h
 CH_CMD_WR_HOST_DATA: equ 2Ch
+CH_CMD_SET_ADDRESS: equ 45h
 CH_CMD_GET_DESCR: equ 46h
+CH_CMD_SET_CONFIG: equ 49h
 CH_CMD_ISSUE_TKN_X: equ 4Eh
 
 ;--- PIDs
@@ -191,6 +195,9 @@ HW_CONTROL_TRANSFER:
 
     ld c,(ix+6)
     ld b,(ix+7) ;BC = Data length
+    ld a,b
+    or c
+    jr z,_CH_CONTROL_STATUS_IN_TRANSFER
     ld e,0      ;E  = Endpoint number
     scf         ;Use toggle = 1
     bit 7,(ix)
@@ -202,10 +209,14 @@ _CH_CONTROL_IN_TRANSFER:
     ret nz
 
     push bc
-    ld bc,0
-    ld de,0800h     ;We request 0 bytes, actual max EP size not needed
-    scf             ;Use toggle 1
-    call CH_DATA_OUT_TRANSFER
+
+    ld b,0
+    call CH_WRITE_DATA
+    ld e,0
+    ld b,CH_PID_OUT
+    ld a,40h    ;Toggle bit = 1
+    call CH_ISSUE_TOKEN
+
     pop bc
     ret
 
@@ -214,11 +225,16 @@ _CH_CONTROL_OUT_TRANSFER:
     or a
     ret nz
 
+_CH_CONTROL_STATUS_IN_TRANSFER:
     push bc
-    ld bc,0
-    ld de,0800h     ;We request 0 bytes, actual max EP size not needed
-    scf             ;Use toggle 1
-    call CH_DATA_IN_TRANSFER
+
+    ld e,0
+    ld b,CH_PID_IN
+    ld a,80h    ;Toggle bit = 1
+    call CH_ISSUE_TOKEN
+    ld hl,0
+    call CH_READ_DATA
+
     pop bc
     ret
 
@@ -259,9 +275,19 @@ _CH_DATA_IN_LOOP:
     or a
     jr nz,_CH_DATA_IN_ERR   ;DONE if error
 
+    if 0
+    ex (sp),hl
+    ld a,h
+    or l
+    ld c,0
+    jr z,_CH_DATA_IN_NO_MORE_DATA
+    ex (sp),hl
+    endif
+
     call CH_READ_DATA
     ld b,0
     add ix,bc   ;Update received so far count
+_CH_DATA_IN_NO_MORE_DATA:
 
     pop de
     pop af
@@ -343,12 +369,12 @@ _CH_DATA_OUT_LOOP:
 _CH_DATA_OUT_DO:
     ;Here, A = Length of the next transfer: min(remaining length, EP size)
 
-    pop hl
+    ex (sp),hl
     ld e,a
     ld d,0
     or a
     sbc hl,de
-    push hl     ;Updated remaining data length to the stack
+    ex (sp),hl     ;Updated remaining data length to the stack
 
     ld b,a
     call CH_WRITE_DATA
@@ -425,6 +451,15 @@ CH_CHECK_INT_IS_ACTIVE:
     and 80h
     ret
 
+
+CH_WAIT_WHILE_BUSY:
+    push af
+_CH_WAIT_WHILE_BUSY_LOOP:
+    in a,(CH_COMMAND_PORT)
+    and 10000b
+    jr nz,_CH_WAIT_WHILE_BUSY_LOOP
+    pop af
+    ret
 
 ; --------------------------------------
 ; CH_WAIT_INT_AND_GET_RESULT
@@ -576,7 +611,7 @@ CH_SET_TARGET_DEVICE_ADDRESS:
 ; Input: E = Endpoint number
 ;        B = PID, one of CH_PID_*
 ;        A = Toggle bit in bit 7 (for IN transfer)
-;            Toggle bit in bit 6 (for OUt transfer)
+;            Toggle bit in bit 6 (for OUT transfer)
 
 CH_ISSUE_TOKEN:
     ld d,a
@@ -612,12 +647,21 @@ CH_READ_DATA:
     or a
     ret z   ;No data to transfer at all
     ld b,a
+
+    ld a,h
+    or l
+    jr z,_CH_READ_DISCARD_DATA_LOOP
+
 _CH_READ_DATA_LOOP:
     in a,(CH_DATA_PORT)
     ld (hl),a
     inc hl
     djnz _CH_READ_DATA_LOOP
+    ret
 
+_CH_READ_DISCARD_DATA_LOOP:
+    in a,(CH_DATA_PORT)
+    djnz _CH_READ_DATA_LOOP
     ret
 
 
@@ -689,3 +733,37 @@ CH_GET_DESCR:
     ret
 
     endif
+
+
+    if HW_IMPL_SET_CONFIG = 1
+
+    ;In: A=Address, B=Config number
+HW_SET_CONFIG:
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    ld a,CH_CMD_SET_CONFIG
+    out (CH_COMMAND_PORT),a
+    ld a,b
+    out (CH_DATA_PORT),a
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    ret
+
+    endif
+
+
+    if HW_IMPL_SET_ADDRESS = 1
+
+    ;In: A=Address
+HW_SET_ADDRESS:
+    push af
+    xor a
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    ld a,CH_CMD_SET_ADDRESS
+    out (CH_COMMAND_PORT),a
+    pop af
+    out (CH_DATA_PORT),a
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    ret
+
+    endif    
