@@ -147,7 +147,7 @@ _INIT_USB_INT_EP:
     bit 7,a
     jr z,_INIT_USB_NEXT_EP  ;Skip if interrupt OUT endpoint
 
-    and 1111b
+    and 10001111b
     ld b,2
     call WK_SET_EP_NUMBER
 
@@ -165,7 +165,7 @@ _INIT_USB_BULK_EP:
     ld b,a
 
     ld a,c
-    and 1111b
+    and 10001111b
     push bc
     call WK_SET_EP_NUMBER
     pop bc
@@ -368,11 +368,10 @@ _USB_DATA_IN_INT:
 
 _USB_DATA_IN_GO:
 
-    ;* Here E = Endpoint number except bit 7, D = Endpoint size, B=1 for bulk or 2 for int
+    ;* Here E = Endpoint number, D = Endpoint size, B=1 for bulk or 2 for int
 
     push bc ;We'll need B to update the toggle bit
 
-    set 7,e
     push de
     call WK_GET_TOGGLE_BIT
     pop de
@@ -389,10 +388,23 @@ _USB_DATA_IN_GO:
     or a
     pop de
     ld a,d
+    jr z,_USB_DATA_IN_OK
+
+    ;* On STALL error, clear endpoint HALT
+
+    cp USB_ERR_STALL
     ret nz
+
+    push ix
+    pop af
+    or a
+    call USB_CLEAR_ENDPOINT_HALT
+    ld a,USB_ERR_STALL
+    ret
 
     ;* On success, update toggle bit
 
+_USB_DATA_IN_OK:
     push ix
     pop bc
     push de
@@ -400,6 +412,64 @@ _USB_DATA_IN_GO:
     call WK_SET_TOGGLE_BIT
     xor a
     ret
+
+
+; -----------------------------------------------------------------------------
+; USB_CLEAR_ENDPOINT_HALT
+;
+; Also clears the toggle bit in the work area.
+; -----------------------------------------------------------------------------
+; Input: A = which endpoint to clear:
+;            0: bulk OUT
+;            1: bulk IN
+;            2: interrupt IN
+
+USB_CLEAR_ENDPOINT_HALT:
+    ex af,af
+    ld bc,8
+    call STACKALLOC
+    ex af,af
+    push af
+
+    ex de,hl
+    push de
+    ld hl,USB_CMD_CLEAR_ENDPOINT_HALT
+    ld bc,8
+    ldir
+    pop ix
+    ld b,a
+    call WK_GET_EP_NUMBER
+    ld (ix+4),a
+
+    push ix
+    pop hl
+    call USB_CONTROL_TRANSFER
+
+    pop bc ;was A
+    or a
+    call z,WK_SET_TOGGLE_BIT
+
+    ld d,a
+    call STACKFREE
+    ld a,d
+    ret
+
+USB_CMD_CLEAR_ENDPOINT_HALT:
+    db 2, 1, 0, 0, 255, 0, 0, 0     ;byte 4 is the endpoint to be cleared
+
+;!!!TESTING
+SET_HALT:
+    push bc,de,hl,ix,iy
+    ld hl,USB_CMD_SET_ENDPOINT_HALT
+    call USB_CONTROL_TRANSFER
+    pop bc,de,hl,ix,iy
+    ret
+
+ENDPOINT_HALTED: equ 81h
+
+USB_CMD_SET_ENDPOINT_HALT:
+    db 2, 3, 0, 0, ENDPOINT_HALTED, 0, 0, 0    
+;!!!
 
 
 ; -----------------------------------------------------------------------------
@@ -539,7 +609,6 @@ _USB_EXE_CBI_STEP_3:
     ld a,b
     or c
     pop bc
-    pop de  ;Was AF
     jr z,_USB_EXE_DO_REQUEST_SENSE  ;No data received from INT endpoint?
 
     ;>>> STEP 3.1: If ASC=0 we're done, otherwise clear error with Reques Sense
@@ -585,4 +654,5 @@ CBI_ADSC:
     db 21h, 0, 0, 0, 255, 0, 255, 0 ;5th byte is interface number, 6th byte is command length
 
 UFI_CMD_REQUEST_SENSE:
+    db 12
     db REQUEST_SENSE_CMD_CODE, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0

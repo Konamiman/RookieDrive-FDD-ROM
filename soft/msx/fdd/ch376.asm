@@ -216,6 +216,7 @@ _CH_CONTROL_IN_TRANSFER:
     ld b,CH_PID_OUT
     ld a,40h    ;Toggle bit = 1
     call CH_ISSUE_TOKEN
+    call CH_WAIT_INT_AND_GET_RESULT
 
     pop bc
     ret
@@ -234,6 +235,7 @@ _CH_CONTROL_STATUS_IN_TRANSFER:
     call CH_ISSUE_TOKEN
     ld hl,0
     call CH_READ_DATA
+    call CH_WAIT_INT_AND_GET_RESULT
 
     pop bc
     ret

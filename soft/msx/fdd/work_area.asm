@@ -6,7 +6,7 @@
 ; +3: Interface number for the ADSC setup packet
 ;
 ; Endpoint parameters are:
-;   bits 3-0: Endpoint number
+;   bits 7 and 3-0: Endpoint number
 ;   bit 4: Toggle bit state
 ;   bits 6-5: Endpoint max packet size
 ;
@@ -20,7 +20,7 @@
 ;  11 = 64 bytes
 ;
 ; If no device is connected or the connected device is not a CBI FDD,
-; or if some error occurred during USB hat=rdware or device initialization,
+; or if some error occurred during USB hardware or device initialization,
 ; the work area contents is all zero.
 
 
@@ -105,7 +105,7 @@ WK_HAS_CONTENTS:
 WK_SET_EP_NUMBER:
     push ix
     call WK_GET_POINTER
-    and 1111b
+    and 10001111b
     ld c,a
     ld a,(hl)
     and 11110000b
@@ -121,7 +121,7 @@ WK_GET_EP_NUMBER:
     push ix
     call WK_GET_POINTER
     ld a,(hl)
-    and 1111b
+    and 10001111b
     pop ix
     ret
 

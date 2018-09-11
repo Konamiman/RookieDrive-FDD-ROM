@@ -1,4 +1,5 @@
-﻿using System;
+﻿#if false
+using System;
 using System.Linq;
 using Konamiman.Opc.ClientLibrary;
 
@@ -54,3 +55,4 @@ namespace Konamiman.RookieDrive.Usb
         }
     }
 }
+#endif

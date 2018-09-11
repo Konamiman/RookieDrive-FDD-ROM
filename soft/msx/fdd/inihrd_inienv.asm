@@ -2,6 +2,8 @@
 ; because we need to setup the work area during reset, but work area
 ; is zeroed by kernel between INIHRD and INIENV.
 
+INITXT: equ 006Ch
+
 ; -----------------------------------------------------------------------------
 ; INIHRD
 ; -----------------------------------------------------------------------------
@@ -11,6 +13,7 @@
 ; -----------------------------------------------------------------------------
 
 INIHRD:
+    call INITXT
 	ld hl,ROOKIE_S
 	jp PRINT
 
@@ -61,14 +64,9 @@ RESET_AND_PRINT_INFO:
     ld hl,NO_CBI_DEV_S
     jp z,PRINT
 
-    push bc
+    ld a,b
     ld hl,DEVERR_S
-    call PRINT
-    pop af
-    add a,"0"
-    call CHPUT
-    ld hl,CRLF_S
-    jp PRINT
+    jp PRINT_ERROR
 
     if WAIT_KEY = 1
 INIHRD_NEXT:
@@ -91,7 +89,25 @@ DO_INQUIRY:
     call USB_EXECUTE_CBI
     or a
     ld hl,ERR_INQUIRY_S
-    jp nz,PRINT
+    jp nz,PRINT_ERROR
+
+    ld hl,9000h+8
+    ld b,8
+    call PRINT_SPACE_PADDED_STRING
+    ld a,' '
+    call CHPUT
+
+    ld hl,9000h+16
+    ld b,16
+    call PRINT_SPACE_PADDED_STRING
+    ld a,' '
+    call CHPUT
+
+    ld hl,9000h+32
+    ld b,4
+    call PRINT_SPACE_PADDED_STRING
+
+    ret
 
     xor a
     ld (9000h+36),a
@@ -99,8 +115,23 @@ DO_INQUIRY:
     call PRINT
     ret
 
-GET_CONFIG_CMD:
-    db 80h, 8, 0, 0, 0, 0, 1, 0
+READ_SECTOR_0:
+    ld hl,READ_SECTOR_0_CMD
+    ld de,9000h
+    ld bc,512
+    or a
+    call USB_EXECUTE_CBI
+    ld a,d
+    or a
+    jr nz,READ_SECTOR_0
+
+    call SET_HALT    ;!!!TESTING
+    call READ_SECTOR_0
+    ret
+
+READ_SECTOR_0_CMD:
+    db 12
+    db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
 
 INIQUIRY_CMD:
     db 12
@@ -124,7 +155,7 @@ NO_CBI_DEV_S:
     db  "USB device found, but it's not a FDD unit",13,10,0
 
 YES_CBI_DEV_S:
-    db  "USB FDD unit found!",13,10,0    
+    db  "USB FDD found: ",0    
 
 RESERR_S:
     db  "ERROR initializing USB host hardware or resetting USB device",13,10,0
@@ -133,16 +164,55 @@ DEVERR_S:
     db  "ERROR querying or initializing USB device: ",0
 
 ERR_INQUIRY_S:
-    db  "ERROR querying the device name",0
+    db  "ERROR querying the device name: ",0
 
 DEV_DESC:
     db 80h, 6, 0, 1, 0, 0, 20, 0 
+
+;In: HL = Error message, A = Error code
+PRINT_ERROR:
+    push af
+    call PRINT
+    pop af
+    add "0"
+    call CHPUT
+    ld hl,CRLF_S
+    jp PRINT
+
+
+;In: HL = Address
+;    B  = Length
+
+PRINT_SPACE_PADDED_STRING:
+    ld e,b
+    ld d,0
+    push hl
+    add hl,de   ;HL points past the last char of the string
+_PSPS_Z_LOOP:
+    dec hl
+    ld a,(hl)
+    cp ' '
+    jr nz,_PSPS_DO
+    djnz _PSPS_Z_LOOP
+    pop hl
+    ret         ;All the string is spaces, do nothing
+
+_PSPS_DO:
+    pop hl
+_PSPS_P_LOOP:
+    ld a,(hl)
+    call CHPUT
+    inc hl
+    djnz _PSPS_P_LOOP
+
+    ret
+
 
 ;In:  BC = Required space
 ;Out: HL = Address of allocated space
 STACKALLOC:
     pop ix
-    ld hl,2
+    ld hl,0
     or a
     sbc hl,bc
     add hl,sp
@@ -154,8 +224,6 @@ STACKALLOC:
 STACKFREE:
     pop ix
     pop hl
-    dec hl
-    dec hl
     add hl,sp
     ld sp,hl
     push ix
