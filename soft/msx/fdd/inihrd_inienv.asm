@@ -116,18 +116,24 @@ DO_INQUIRY:
     ret
 
 READ_SECTOR_0:
+    xor a
+    ld b,2
+    ld de,0
+    ld hl,9000h
+    call DSKIO
+    ret
+
+    xor a
+    ld hl,9000h
+    call DSKCHG
+
     ld hl,READ_SECTOR_0_CMD
     ld de,9000h
     ld bc,512
+    ld a,1
     or a
-    call USB_EXECUTE_CBI
-    ld a,d
-    or a
-    jr nz,READ_SECTOR_0
-
-    call SET_HALT    ;!!!TESTING
-    call READ_SECTOR_0
-    ret
+    call USB_EXECUTE_CBI_WITH_RETRY
+    jr READ_SECTOR_0
 
 READ_SECTOR_0_CMD:
     db 12

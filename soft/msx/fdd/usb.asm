@@ -1,6 +1,6 @@
 USB_DEVICE_ADDRESS: equ 1
 
-USB_CLASS_MASS: equ 0ffh ;8
+USB_CLASS_MASS: equ 8   ;0ffh ;8
 USB_SUBCLASS_CBI: equ 4
 USB_PROTO_WITH_INT_EP: equ 0
 
@@ -344,6 +344,15 @@ _USB_CONTROL_TRANSFER_DO:
 ;         BC = Amount of data actually received (only if no error)
 
 USB_DATA_IN_TRANSFER:
+    push af
+    ld a,b
+    or c
+    jr nz,_USB_DATA_IN_NZ
+    pop de
+    ret
+_USB_DATA_IN_NZ:
+    pop af
+
     push hl
     push bc
 
@@ -405,12 +414,14 @@ _USB_DATA_IN_GO:
     ;* On success, update toggle bit
 
 _USB_DATA_IN_OK:
+    push bc ;Save retrieved data count
     push ix
     pop bc
     push de
     pop af
     call WK_SET_TOGGLE_BIT
     xor a
+    pop bc
     ret
 
 
@@ -470,6 +481,85 @@ ENDPOINT_HALTED: equ 81h
 USB_CMD_SET_ENDPOINT_HALT:
     db 2, 3, 0, 0, ENDPOINT_HALTED, 0, 0, 0    
 ;!!!
+
+
+; -----------------------------------------------------------------------------
+; USB_EXECUTE_CBI_WITH_RETRY: Execute a command using CBI transport with error retry
+;
+; Retried errors are those of type "device powered" or "not ready to
+; ready transition", plus optionally "media changed"
+; -----------------------------------------------------------------------------
+; Input:  Same as USB_EXECUTE_CBI, plus:
+;         A = 1 to retry "media changed" errors, 0 to no retry them
+; Output: Same as USB_EXECUTE_CBI
+
+USB_EXECUTE_CBI_WITH_RETRY:
+    push hl
+    push de
+    push bc
+    push af
+
+    call USB_EXECUTE_CBI
+    or a
+    jr nz,_USB_ECBIR_POPALL_END_NZ   ;USB level error: do not retry
+
+    ld a,d
+    or a    ;No error at all
+    jr z,_USB_ECBIR_POPALL_END_NZ
+
+    ;Report success if the error is one of the "recovered data" (17h or 18h)
+
+    cp 17h
+    jr z,_USB_ECBIR_POPALL_END
+    cp 18h
+    jr z,_USB_ECBIR_POPALL_END
+
+    ;Retry if ASC=4 and ASCQ=1 (unit becoming ready) or FFh (unit busy)
+
+    cp 4
+    jr nz,_USB_ECBIR_NO_ASC_4
+    ld a,e
+    cp 1
+    jr z,_USB_ECBIR_DO_RETRY
+    cp 0FFh
+    jr z,_USB_ECBIR_DO_RETRY
+    jr _USB_ECBIR_POPALL_END
+_USB_ECBIR_NO_ASC_4:
+
+    ;Retry "device powered" error
+
+    ld a,d
+    cp 29h
+    jr z,_USB_ECBIR_DO_RETRY
+
+    ;Retry "media changed" only if we were instructed to do so
+
+    cp 28h
+    jr nz,_USB_ECBIR_POPALL_END
+    pop af
+    push af
+    or a
+    jr z,_USB_ECBIR_POPALL_END
+
+    ;Here we know we must retry
+
+_USB_ECBIR_DO_RETRY:
+    pop af
+    pop bc
+    pop de
+    pop hl    
+    jr USB_EXECUTE_CBI_WITH_RETRY
+
+    ;Success, or do not retry
+
+_USB_ECBIR_POPALL_END:
+    xor a
+_USB_ECBIR_POPALL_END_NZ:
+    pop hl
+    pop hl
+    pop hl
+    pop hl
+    ret
 
 
 ; -----------------------------------------------------------------------------

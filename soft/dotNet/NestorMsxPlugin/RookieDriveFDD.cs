@@ -231,6 +231,8 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                     return 2;   //Not ready
                 case 0x10:
                     return 4;   //CRC error
+                case 0x21:
+                    return 6;   //Seek error
                 case 0x02:
                     return 6;   //Seek error
                 case 0x03:
