@@ -34,47 +34,127 @@ _DSKIO_OK_UNIT:
     or a
     ret z   ;Nothing to read
 
+    exx
+    ld bc,13
+    call STACKALLOC
     push hl
-    push de
-    push bc
-
+    ex de,hl
     ld hl,_UFI_READ_SECTOR_CMD
-    ld de,(SECBUF)
-    push de
-    pop ix
     ld bc,13
     ldir
-    pop bc
-    ld (ix+8+1),b
-    pop de
-    ld (ix+4+1),d
+    pop ix  ;IX = Read Sector command
+    exx
+    ld (ix+4+1),d   ;First sector
     ld (ix+5+1),e
 
-    pop de  ;was HL, transfer address
-    push ix
-    pop hl  ;Command address
+    ;* At this point:
+    ;  IX = Read sector command, with the proper first sector number
+    ;  HL = Transfer address
+    ;  B  = Sector count
+
+    ;If the last sector to read is in page 0,
+    ;of if the first sector to read is in page 2 or 3,
+    ;we transfer all sectors in one single operation.
+    ;Otherwise we transfer sectors one by one using XFER.
+
+    push hl
+    srl h       ;Now H = start address / 512 (0-127)
+    ld a,h
+    add b
+    dec a       ;Now A = last address / 512  (0-127)
+    pop hl
+
+    cp 32
+    jr c,_DSKIO_DIRECT
+    ld a,h
+    cp 64
+    jr c,_DSKIO_DIRECT
+
+    ;--- Transfer using XFER
+
+_DSKIO_WITH_XFER:
+    ld c,0  ;C = Count of sectors successfully transferred
+    ld (ix+8+1),1
+_DSKIO_WITH_XFER_LOOP:    
     push bc
-    sla b
-    ld c,0  ;Bytes count = sector count * 512
+    push hl
+    ld hl,(SECBUF)
+    ld bc,512
+    call _DSKIO_DO_READ
+    pop hl
+    pop bc
+    jr c,_DSKIO_WITH_XFER_END
+
+    push bc
+    ex de,hl
+    ld hl,(SECBUF)
+    ld bc,512
+    push ix
+    call XFER
+    pop ix
+    pop bc
+    ex de,hl    ;HL = Updated transfer address
+
+    inc c   ;One more successful sector
+    ;inc hl
+    ;inc hl ;HL = HL + 512
+    ld d,(ix+4+1)
+    ld e,(ix+5+1)
+    inc de      ;Update sector number
+    ld (ix+4+1),d
+    ld (ix+5+1),e
+    djnz _DSKIO_WITH_XFER_LOOP
+
+    xor a
+_DSKIO_WITH_XFER_END:
+    call STACKFREE
+    ld b,c
+    ret
+
+    ;--- Direct transfer
+
+_DSKIO_DIRECT:
+    ld (ix+8+1),b
+    push bc
+    sla b  ;Bytes count = sector count * 512
+    ld c,0
+    call _DSKIO_DO_READ
+    pop bc
+    jr nc,_DSKIO_DIRECT_END
+    ld b,0  ;Report no sectors transferred on error
+_DSKIO_DIRECT_END:
+    call STACKFREE
+    ret
+
+    ;--- Routine for one execution of the Read Sector command
+    ;    Input:  IX = Command address (with proper sector number and sector count set)
+    ;            HL = Transfer address
+    ;            BC = Bytes count
+    ;    Output: On success: Cy = 0
+    ;            On error:   Cy = 1 and A = DSKIO error code
+    ;    Preserves IX
+
+_DSKIO_DO_READ:
+    ex de,hl
+    push ix
+    push ix
+    pop hl
     ld a,1  ;Retry "media changed"
     or a    ;Read data
     call USB_EXECUTE_CBI_WITH_RETRY
-
+    pop ix
+    
     or a
-    pop hl  ;Sector count
     ld a,12
-    ld b,0
     scf
     ret nz  ;Return "other error" on USB error
 
-    ld b,h
     ld a,d
     or a
     ret z   ;Sucess if ASC = 0
 
     call ASC_TO_ERR
     scf
-    ld b,0
     ret
 
 _UFI_READ_SECTOR_CMD:

@@ -119,7 +119,7 @@ READ_SECTOR_0:
     xor a
     ld b,2
     ld de,0
-    ld hl,9000h
+    ld hl,4000h-1024
     call DSKIO
     ret
 
