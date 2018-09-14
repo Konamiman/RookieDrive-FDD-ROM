@@ -1,6 +1,6 @@
 USB_DEVICE_ADDRESS: equ 1
 
-USB_CLASS_MASS: equ 8   ;0ffh ;8
+USB_CLASS_MASS: equ 0ffh ;8
 USB_SUBCLASS_CBI: equ 4
 USB_PROTO_WITH_INT_EP: equ 0
 
@@ -341,7 +341,7 @@ _USB_CONTROL_TRANSFER_DO:
 ;         BC = Data length
 ;         Cy = 0 for bulk IN endpoint, 1 for interrupt endpoint
 ; Output: A  = Error code (one of USB_ERR_*)
-;         BC = Amount of data actually received (only if no error)
+;         BC = Amount of data actually received
 
 USB_DATA_IN_TRANSFER:
     push af
@@ -407,7 +407,9 @@ _USB_DATA_IN_GO:
     push ix
     pop af
     or a
+    push bc
     call USB_CLEAR_ENDPOINT_HALT
+    pop bc
     ld a,USB_ERR_STALL
     ret
 
@@ -570,7 +572,7 @@ _USB_ECBIR_POPALL_END_NZ:
 ;         BC = Length of data to send or receive
 ;         Cy = 0 to receive data, 1 to send data
 ; Output: A  = Error code (one of USB_ERR_*)
-;         BC = Amount of data actually transferred (if IN transfer and no error)
+;         BC = Amount of data actually transferred (if IN transfer)
 ;         D  = ASC (if no error)
 ;         E  = ASCQ (if no error)
 
@@ -615,6 +617,7 @@ _USB_EXE_CBI_STEP_1:
     push ix
     call USB_CONTROL_TRANSFER
     pop ix
+    ld bc,0     ;If we return now, transferred data = 0
 
     or a
     jr z,_USB_EXE_CBI_STEP_2
@@ -630,7 +633,6 @@ _USB_EXE_CBI_STEP_1:
     pop hl
     pop hl
     pop hl
-    ld bc,0
     jr _USB_EXE_DO_REQUEST_SENSE
 
     ;>>> STEP 2: Send or receive data
@@ -696,14 +698,14 @@ _USB_EXE_CBI_STEP_3:
     ld a,USB_ERR_STALL    
     jr z,_USB_EXE_CBI_POP1_END
 
-    ld a,b
-    or c
-    pop bc
-    jr z,_USB_EXE_DO_REQUEST_SENSE  ;No data received from INT endpoint?
-
     ;>>> STEP 3.1: If ASC=0 we're done, otherwise clear error with Reques Sense
 
 _USB_EXE_CBI_STEP_3_1:
+    ld a,b
+    or c
+    push hl
+    pop bc   ;Received data count
+    jr z,_USB_EXE_DO_REQUEST_SENSE  ;No data received from INT endpoint: assume error
 
     ld a,(ix)
     or a
@@ -711,7 +713,7 @@ _USB_EXE_CBI_STEP_3_1:
     jr z,_USB_EXE_CBI_END
 
     ;>>> Execute REQUEST SENSE
-    ;    Input: BC = Received data
+    ;    Input: BC = Received data count
 
 _USB_EXE_DO_REQUEST_SENSE:
     push bc
@@ -731,11 +733,11 @@ _USB_EXE_DO_REQUEST_SENSE:
     jr _USB_EXE_CBI_END
     
 _USB_EXE_CBI_POP3_END:
-    pop bc
+    pop hl
 _USB_EXE_CBI_POP2_END:
-    pop bc
+    pop hl
 _USB_EXE_CBI_POP1_END:
-    pop bc
+    pop hl
 _USB_EXE_CBI_END:
     call STACKFREE
     ret

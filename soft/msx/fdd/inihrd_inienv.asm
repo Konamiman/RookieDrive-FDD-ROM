@@ -117,9 +117,9 @@ DO_INQUIRY:
 
 READ_SECTOR_0:
     xor a
-    ld b,2
+    ld b,32
     ld de,0
-    ld hl,4000h-1024
+    ld hl,8000h
     call DSKIO
     ret
 
@@ -228,9 +228,13 @@ STACKALLOC:
     ret
 
 STACKFREE:
+    push af
+    pop iy
     pop ix
     pop hl
     add hl,sp
     ld sp,hl
     push ix
+    push iy
+    pop af
     ret

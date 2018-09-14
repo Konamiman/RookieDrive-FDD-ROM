@@ -52,22 +52,23 @@ _DSKIO_OK_UNIT:
     ;  HL = Transfer address
     ;  B  = Sector count
 
-    ;If the last sector to read is in page 0,
-    ;of if the first sector to read is in page 2 or 3,
+    ;If the last transfer address is in page 0,
+    ;of if the first transfer address is in page 2 or 3,
     ;we transfer all sectors in one single operation.
     ;Otherwise we transfer sectors one by one using XFER.
 
+    bit 7,h
+    jr nz,_DSKIO_DIRECT     ;Transfer starts at page 2 or 3
     push hl
-    srl h       ;Now H = start address / 512 (0-127)
+    push bc
+    sla b
+    ld c,0
+    add hl,bc
+    dec hl      ;Now HL = last transfer address
     ld a,h
-    add b
-    dec a       ;Now A = last address / 512  (0-127)
+    cp 40h
+    pop bc
     pop hl
-
-    cp 32
-    jr c,_DSKIO_DIRECT
-    ld a,h
-    cp 64
     jr c,_DSKIO_DIRECT
 
     ;--- Transfer using XFER
@@ -115,14 +116,9 @@ _DSKIO_WITH_XFER_END:
 
 _DSKIO_DIRECT:
     ld (ix+8+1),b
-    push bc
     sla b  ;Bytes count = sector count * 512
     ld c,0
     call _DSKIO_DO_READ
-    pop bc
-    jr nc,_DSKIO_DIRECT_END
-    ld b,0  ;Report no sectors transferred on error
-_DSKIO_DIRECT_END:
     call STACKFREE
     ret
 
@@ -130,32 +126,74 @@ _DSKIO_DIRECT_END:
     ;    Input:  IX = Command address (with proper sector number and sector count set)
     ;            HL = Transfer address
     ;            BC = Bytes count
-    ;    Output: On success: Cy = 0
-    ;            On error:   Cy = 1 and A = DSKIO error code
+    ;    Output: B = transferred sectors count
+    ;            HL increased by the transferred sectors count
+    ;            On success: Cy = 0
+    ;            On error:   Cy = 1, A = DSKIO error code
+    ;            
     ;    Preserves IX
 
 _DSKIO_DO_READ:
-    ex de,hl
+    ld de,0 ;Total sectors transferred
+_DSKIO_DO_READ_LOOP    
+    ex de,hl    ;HL = Total sectors transferred, DE = Transfer address
     push ix
+    push hl
+    push de
     push ix
     pop hl
     ld a,1  ;Retry "media changed"
     or a    ;Read data
     call USB_EXECUTE_CBI_WITH_RETRY
+    push de
+    pop iy  ;IY = ASC + ASCQ
+    pop hl  ;HL = Transfer address
+    pop de  ;DE = Total sectors transferred
     pop ix
-    
+
+    ld c,0
+    res 0,b     ;BC = Bytes transferred, rounded down to sector boundary
+    add hl,bc   ;HL = Updated transfer address
+    ld c,b
+    ld b,0
+    sra c       ;BC = Count of sectors transferred in this iteration
+    ex de,hl
+    add hl,bc
+    ex de,hl    ;DE = Updated total sectors transferred count
+    ld b,e
+
     or a
     ld a,12
     scf
     ret nz  ;Return "other error" on USB error
 
-    ld a,d
+    ld a,iyh
     or a
-    ret z   ;Sucess if ASC = 0
+    ret z   ;Success if ASC = 0
 
-    call ASC_TO_ERR
+    cp 8
     scf
-    ret
+    jp nz,ASC_TO_ERR
+
+    ;* If ASC is of "logical unit communication" type, retry at the appropriate
+    ;  transfer address, unles the amount of received data is < 1 sector
+
+    ld a,c
+    or a
+    ld a,12
+    scf
+    ret z
+
+    push hl
+    ld h,(ix+4+1)
+    ld l,(ix+5+1)
+    ld b,0
+    add hl,bc      ;Update sector number in the command
+    ld (ix+4+1),h
+    ld (ix+5+1),l
+    pop hl
+
+    jr _DSKIO_DO_READ_LOOP
 
 _UFI_READ_SECTOR_CMD:
     db 12
@@ -170,28 +208,28 @@ _UFI_READ_SECTOR_CMD:
 
 ASC_TO_ERR:
     call _ASC_TO_ERR
-    ld a,b
+    ld a,c
     ret
 
 _ASC_TO_ERR:
     cp 27h      ;Write protected
-    ld b,0
+    ld c,0
     ret z
     cp 3Ah      ;Not ready
-    ld b,2
+    ld c,2
     ret z
     cp 10h      ;CRC error
-    ld b,4
+    ld c,4
     ret z
     cp 21h      ;Invalid logical block
-    ld b,6
+    ld c,6
     ret z
     cp 02h      ;Seek error
     ret z
     cp 03h
-    ld b,10
+    ld c,10
     ret z
-    ld b,12     ;Other error
+    ld c,12     ;Other error
     ret
 
 
