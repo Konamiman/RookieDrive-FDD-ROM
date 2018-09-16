@@ -90,7 +90,7 @@ WK_GET_EP_SIZE:
     ret
 
 
-;Z if work area is zeroed, NZ if it has contents
+;Z and NC if work area is zeroed, NZ if it has contents
 WK_HAS_CONTENTS:
     push ix
     call GETWRK

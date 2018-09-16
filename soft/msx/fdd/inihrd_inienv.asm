@@ -49,10 +49,7 @@ RESET_AND_PRINT_INFO:
     ld hl,NODEV_S
     jp z,PRINT
 
-    call INIT_USB_DEV
-    ;xor a
-    ;inc a
-    ;nop
+    call USB_INIT_DEV
     or a
     ld hl,YES_CBI_DEV_S
     push af

@@ -6,8 +6,50 @@ USB_PROTO_WITH_INT_EP: equ 0
 
 REQUEST_SENSE_CMD_CODE: equ 3
 
+
 ; -----------------------------------------------------------------------------
-; INIT_USB_DEV: Initialize USB device and work area
+; USB_CHECK_DEV_CHANGE
+;
+; Check if a device connection or disconnection has happened.
+; On device connection, initialize it.
+; On device disconnection, clear work area.
+;
+; Output: Cy=0 if a properly initialized CBI device is connected, 1 if not
+
+USB_CHECK_DEV_CHANGE:
+    call HW_DEV_CHANGE
+    jr c,_USB_CHECK_DEV_CHANGE_NO_DEV   ;Device present, but bus reset failed
+
+    or a
+    jr nz,_USB_CHECK_DEV_CHANGE_CHANGED
+
+    ;* No device change detected, rely on work area
+
+    call WK_HAS_CONTENTS
+    ret nc
+    scf
+    ret
+
+    ;* Device change detected, act accordingly
+
+_USB_CHECK_DEV_CHANGE_CHANGED:
+    inc a
+    jr z,_USB_CHECK_DEV_CHANGE_NO_DEV   ;Disconnected
+
+    call USB_INIT_DEV
+    or a
+    ret z   ;Initialization OK
+
+    ;* No device, or device initialization failed
+
+_USB_CHECK_DEV_CHANGE_NO_DEV:
+    call WK_ZERO
+    scf
+    ret
+
+
+; -----------------------------------------------------------------------------
+; USB_INIT_DEV: Initialize USB device and work area
 ;
 ; This routine is invoked after a device connections is detected.
 ; If checks if the device is a CBI FDD, and if so, configures it
@@ -20,7 +62,7 @@ REQUEST_SENSE_CMD_CODE: equ 3
 ;         B = Error code (one of USB_ERR_*) if A = 2
 ; -----------------------------------------------------------------------------
 
-INIT_USB_DEV:
+USB_INIT_DEV:
     ld bc,128
     call STACKALLOC ;HL = Temporary work area in stack
 
@@ -51,7 +93,7 @@ INIT_USB_DEV:
 
     pop ix
     or a
-    jp nz,_INIT_USB_DEV_ERR
+    jp nz,_USB_INIT_DEV_ERR
 
     ld a,(ix+7)
     push ix
@@ -77,7 +119,7 @@ INIT_USB_DEV:
 
     pop ix
     or a
-    jp nz,_INIT_USB_DEV_ERR
+    jp nz,_USB_INIT_DEV_ERR
 
     ld b,(ix+4) ;Number of interfaces
 
@@ -119,7 +161,7 @@ _INIT_USB_SKIP_IFACE_LOOP:
 
     call WK_ZERO
     ld a,1
-    jp _INIT_USB_DEV_END
+    jp _USB_INIT_DEV_END
 
     ;--- We found a suitable descriptor, now let's setup work area
 
@@ -203,7 +245,7 @@ _INIT_USB_NEXT_EP:
     endif
 
     or a
-    jr nz,_INIT_USB_DEV_ERR
+    jr nz,_USB_INIT_DEV_ERR
 
     ;* We must use USB_CONTROL_TRANSFER (not _0) from this point
 
@@ -235,15 +277,15 @@ _INIT_USB_NEXT_EP:
     endif
 
     or a
-    jr z,_INIT_USB_DEV_END
+    jr z,_USB_INIT_DEV_END
 
-_INIT_USB_DEV_ERR:
+_USB_INIT_DEV_ERR:
     push af
     call WK_ZERO
     pop bc
     ld a,2
 
-_INIT_USB_DEV_END:
+_USB_INIT_DEV_END:
     ld c,a
     call STACKFREE
     ld a,c
@@ -324,6 +366,8 @@ _USB_CONTROL_TRANSFER_DO:
     pop de
 
     call HW_CONTROL_TRANSFER
+    or a
+    call nz,USB_PROCESS_ERROR
     ret
 
 
@@ -402,7 +446,7 @@ _USB_DATA_IN_GO:
     ;* On STALL error, clear endpoint HALT
 
     cp USB_ERR_STALL
-    ret nz
+    jp nz,USB_PROCESS_ERROR
 
     push ix
     pop af
@@ -483,6 +527,30 @@ ENDPOINT_HALTED: equ 81h
 USB_CMD_SET_ENDPOINT_HALT:
     db 2, 3, 0, 0, ENDPOINT_HALTED, 0, 0, 0    
 ;!!!
+
+
+; -----------------------------------------------------------------------------
+; USB_PROCESS_ERROR
+;
+; If USB error is "device disconnected", clear work area
+; -----------------------------------------------------------------------------
+; Does not modify registers
+
+USB_PROCESS_ERROR:
+    push af
+    cp USB_ERR_NO_DEVICE
+    jr nz,_USB_PROCESS_ERROR_END
+
+    push bc
+    push de
+    push hl
+    call WK_ZERO
+    pop hl
+    pop de
+    pop bc
+_USB_PROCESS_ERROR_END:
+    pop af
+    ret    
 
 
 ; -----------------------------------------------------------------------------

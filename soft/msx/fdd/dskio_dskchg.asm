@@ -34,6 +34,16 @@ _DSKIO_OK_UNIT:
     or a
     ret z   ;Nothing to read
 
+    push hl
+    push de
+    push bc
+    call USB_CHECK_DEV_CHANGE
+    pop bc
+    pop de
+    pop hl
+    ld a,12
+    ret c   ;No device is connected
+
     exx
     ld bc,13
     call STACKALLOC
@@ -217,6 +227,12 @@ DSKCHG:
     ld a,12
     scf
     ret nz
+
+    push hl
+    call USB_CHECK_DEV_CHANGE
+    pop hl
+    ld a,12
+    ret c   ;No device is connected
 
     push hl
     ld hl,READ_0_SECTORS_CMD
