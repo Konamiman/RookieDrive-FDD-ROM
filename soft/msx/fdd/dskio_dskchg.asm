@@ -11,7 +11,7 @@
 ; Output:	F	Cx set for error
 ;			Cx reset for ok
 ;		A	if error, errorcode
-;		B	if error, remaining sectors
+;		B	total count of sectors read
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
@@ -42,162 +42,121 @@ _DSKIO_OK_UNIT:
     ld hl,_UFI_READ_SECTOR_CMD
     ld bc,13
     ldir
-    pop ix  ;IX = Read Sector command
+    pop ix      ;IX = Read Sector command
     exx
-    ld (ix+4+1),d   ;First sector
+    ld (ix+4+1),d   ;First sector number
     ld (ix+5+1),e
+    ex de,hl    ;DE = Transfer address
 
-    ;* At this point:
-    ;  IX = Read sector command, with the proper first sector number
-    ;  HL = Transfer address
+    ;* Sector read loop. 
+    ;  We read sectors one by one always, because some FDD units
+    ;  choke when requested too many sectors at the same time
+    ;  and become unresponsive until they are reset.
+    ;
+    ;  At this point:
+    ;  IX = Read sector command, with the proper sector number
+    ;  DE = Transfer address
     ;  B  = Sector count
 
-    ;If the last transfer address is in page 0,
-    ;of if the first transfer address is in page 2 or 3,
-    ;we transfer all sectors in one single operation.
-    ;Otherwise we transfer sectors one by one using XFER.
-
-    bit 7,h
-    jr nz,_DSKIO_DIRECT     ;Transfer starts at page 2 or 3
-    push hl
+    ld c,0  ;Count of sectors read so far
+_DSKIO_READ_LOOP:
     push bc
-    sla b
-    ld c,0
-    add hl,bc
-    dec hl      ;Now HL = last transfer address
-    ld a,h
-    cp 40h
-    pop bc
-    pop hl
-    jr c,_DSKIO_DIRECT
-
-    ;--- Transfer using XFER
-
-_DSKIO_WITH_XFER:
-    ld c,0  ;C = Count of sectors successfully transferred
-    ld (ix+8+1),1
-_DSKIO_WITH_XFER_LOOP:    
-    push bc
-    push hl
-    ld hl,(SECBUF)
-    ld bc,512
-    call _DSKIO_DO_READ
-    pop hl
-    pop bc
-    jr c,_DSKIO_WITH_XFER_END
-
-    push bc
-    ex de,hl
-    ld hl,(SECBUF)
-    ld bc,512
-    push ix
-    call XFER
-    pop ix
-    pop bc
-    ex de,hl    ;HL = Updated transfer address
-
-    inc c   ;One more successful sector
-    ;inc hl
-    ;inc hl ;HL = HL + 512
-    ld d,(ix+4+1)
-    ld e,(ix+5+1)
-    inc de      ;Update sector number
-    ld (ix+4+1),d
-    ld (ix+5+1),e
-    djnz _DSKIO_WITH_XFER_LOOP
-
-    xor a
-_DSKIO_WITH_XFER_END:
-    call STACKFREE
-    ld b,c
-    ret
-
-    ;--- Direct transfer
-
-_DSKIO_DIRECT:
-    ld (ix+8+1),b
-    sla b  ;Bytes count = sector count * 512
-    ld c,0
-    call _DSKIO_DO_READ
-    call STACKFREE
-    ret
-
-    ;--- Routine for one execution of the Read Sector command
-    ;    Input:  IX = Command address (with proper sector number and sector count set)
-    ;            HL = Transfer address
-    ;            BC = Bytes count
-    ;    Output: B = transferred sectors count
-    ;            HL increased by the transferred sectors count
-    ;            On success: Cy = 0
-    ;            On error:   Cy = 1, A = DSKIO error code
-    ;            
-    ;    Preserves IX
-
-_DSKIO_DO_READ:
-    ld de,0 ;Total sectors transferred
-_DSKIO_DO_READ_LOOP    
-    ex de,hl    ;HL = Total sectors transferred, DE = Transfer address
-    push ix
-    push hl
     push de
+
+    ld a,d
+    cp 3Eh
+    jr c,_DSKIO_READ_DIRECT
+    and 80h
+    jr nz,_DSKIO_READ_DIRECT
+
+    ;* Read using SECBUF and XFER (transfer address is between 4000h and 7FFFh)
+
+    ld de,(SECBUF)
+    call _DSKIO_READ_ONE
+    jr c,_DSKIO_READ_END_POP
+
+    pop de
+    push de
+    ld hl,(SECBUF)
+    ld bc,512
+    call XFER
+
+    jr _DSKIO_READ_STEP_OK
+
+    ;* Direct read
+
+_DSKIO_READ_DIRECT:
+    call _DSKIO_READ_ONE
+    jr c,_DSKIO_READ_END_POP
+
+    ;* One sector was read ok
+
+_DSKIO_READ_STEP_OK:
+    pop de
+    inc d
+    inc d   ;Update transfer address (+512 bytes)
+
+    pop bc
+    inc c   ;Update total sectors already read count
+
+    ld h,(ix+4+1)
+    ld l,(ix+5+1)
+    inc hl      ;Update sector number
+    ld (ix+4+1),h
+    ld (ix+5+1),l
+
+    djnz _DSKIO_READ_LOOP 
+    jr _DSKIO_READ_END
+
+_DSKIO_READ_END_POP:
+    pop de
+    pop bc
+_DSKIO_READ_END:    
+    ld b,c
+    ex af,af
+    call STACKFREE
+    ex af,af
+    ret
+
+    ;--- Routine for reading one sector
+    ;    Input:  IX = Command address (with proper sector number and sector count set)
+    ;            DE = Transfer address
+    ;    Output: On success: Cy = 0
+    ;            On error:   Cy = 1, A = DSKIO error code
+    ;    Preserves IX
+_DSKIO_READ_ONE:
     push ix
     pop hl
+    ld bc,512   ;Bytes to transfer
     ld a,1  ;Retry "media changed"
     or a    ;Read data
-    call USB_EXECUTE_CBI_WITH_RETRY
-    push de
-    pop iy  ;IY = ASC + ASCQ
-    pop hl  ;HL = Transfer address
-    pop de  ;DE = Total sectors transferred
-    pop ix
 
-    ld c,0
-    res 0,b     ;BC = Bytes transferred, rounded down to sector boundary
-    add hl,bc   ;HL = Updated transfer address
-    ld c,b
-    ld b,0
-    sra c       ;BC = Count of sectors transferred in this iteration
-    ex de,hl
-    add hl,bc
-    ex de,hl    ;DE = Updated total sectors transferred count
-    ld b,e
+    push ix
+    call USB_EXECUTE_CBI_WITH_RETRY
+    pop ix
 
     or a
     ld a,12
     scf
-    ret nz  ;Return "other error" on USB error
+    ret nz   ;Return "other error" on USB error
 
-    ld a,iyh
+    ld a,b
+    cp 2
+    ld a,12
+    scf
+    ret nz  ;Return "other error" if no whole sector was transferred
+
+    ld a,d
     or a
     ret z   ;Success if ASC = 0
 
-    cp 8
+    call ASC_TO_ERR
     scf
-    jp nz,ASC_TO_ERR
-
-    ;* If ASC is of "logical unit communication" type, retry at the appropriate
-    ;  transfer address, unles the amount of received data is < 1 sector
-
-    ld a,c
-    or a
-    ld a,12
-    scf
-    ret z
-
-    push hl
-    ld h,(ix+4+1)
-    ld l,(ix+5+1)
-    ld b,0
-    add hl,bc      ;Update sector number in the command
-    ld (ix+4+1),h
-    ld (ix+5+1),l
-    pop hl
-
-    jr _DSKIO_DO_READ_LOOP
+    ret
 
 _UFI_READ_SECTOR_CMD:
     db 12
-    db 28h, 0, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
+    db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 
 ; -----------------------------------------------------------------------------

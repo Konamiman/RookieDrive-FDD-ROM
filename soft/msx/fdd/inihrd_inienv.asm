@@ -116,6 +116,12 @@ DO_INQUIRY:
     ret
 
 READ_SECTOR_0:
+    ld hl,8000h
+    ld de,8000h+1
+    ld bc,4000h-1
+    ld (hl),0ffh
+    ldir
+
     xor a
     ld b,32
     ld de,0
