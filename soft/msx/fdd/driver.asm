@@ -279,20 +279,6 @@ DEFDPB:
 	db   3
 	dw   7
 	
-; -----------------------------------------------------------------------------
-; OEMSTATEMENT
-; -----------------------------------------------------------------------------
-; Input:	HL	basicpointer
-; Output:	F	Cx set if statement not recognized
-;			Cx reset if statement is recognized
-;		HL	basicpointer,	updated if recognized
-;					unchanged if not recognized
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-OEMSTA:
-	scf
-	ret
 
 ; -----------------------------------------------------------------------------
 ; DSKSTP (Not the offical name)

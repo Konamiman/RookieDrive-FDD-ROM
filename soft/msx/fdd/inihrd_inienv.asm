@@ -55,7 +55,7 @@ RESET_AND_PRINT_INFO:
     push af
     call z,PRINT
     pop af
-    jp z,DO_INQUIRY
+    jp z,PRINT_DEVICE_INFO
 
     dec a
     ld hl,NO_CBI_DEV_S
@@ -78,39 +78,88 @@ PRINT:
 	inc hl
 	jr PRINT
 
-DO_INQUIRY:
+
+PRINT_DEVICE_INFO:
+    ld b,36
+    call STACKALLOC
+    push hl
+    pop de
     ld hl,INIQUIRY_CMD
-    ld de,9000h
     ld bc,36
     or a
+    push de
     call USB_EXECUTE_CBI
+    pop hl
     or a
-    ld hl,ERR_INQUIRY_S
-    jp nz,PRINT_ERROR
+    jr nz,_PRINT_DEVICE_INFO_ERR
 
-    ld hl,9000h+8
+    ld bc,8
+    add hl,bc
     ld b,8
     call PRINT_SPACE_PADDED_STRING
     ld a,' '
     call CHPUT
 
-    ld hl,9000h+16
+    ld bc,8 ;base + 16
+    add hl,bc
     ld b,16
     call PRINT_SPACE_PADDED_STRING
     ld a,' '
     call CHPUT
 
-    ld hl,9000h+32
+    ld bc,16 ;base + 32
+    add hl,bc
     ld b,4
     call PRINT_SPACE_PADDED_STRING
 
+    call STACKFREE
     ret
 
-    xor a
-    ld (9000h+36),a
-    ld hl,9000h+8
-    call PRINT
+_PRINT_DEVICE_INFO_ERR:
+    ld hl,ERR_INQUIRY_S
+    call PRINT_ERROR
+    call STACKFREE
     ret
+
+INIQUIRY_CMD:
+    db 12h, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0
+
+
+;In: HL = Address
+;    B  = Length
+
+PRINT_SPACE_PADDED_STRING:
+    push hl
+    call _PRINT_SPACE_PADDED_STRING
+    pop hl
+    ret
+
+_PRINT_SPACE_PADDED_STRING:
+    ld e,b
+    ld d,0
+    push hl
+    add hl,de   ;HL points past the last char of the string
+_PSPS_Z_LOOP:
+    dec hl
+    ld a,(hl)
+    cp ' '
+    jr nz,_PSPS_DO
+    djnz _PSPS_Z_LOOP
+    pop hl
+    ret         ;All the string is spaces, do nothing
+
+_PSPS_DO:
+    pop hl
+_PSPS_P_LOOP:
+    ld a,(hl)
+    call CHPUT
+    inc hl
+    djnz _PSPS_P_LOOP
+
+    ret
+
+
+    if 0
 
 READ_SECTOR_0:
     ld hl,8000h
@@ -141,8 +190,7 @@ READ_SECTOR_0:
 READ_SECTOR_0_CMD:
     db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
 
-INIQUIRY_CMD:
-    db 12h, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0
+    endif
   
 ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10
@@ -186,33 +234,6 @@ PRINT_ERROR:
     ld hl,CRLF_S
     jp PRINT
 
-
-;In: HL = Address
-;    B  = Length
-
-PRINT_SPACE_PADDED_STRING:
-    ld e,b
-    ld d,0
-    push hl
-    add hl,de   ;HL points past the last char of the string
-_PSPS_Z_LOOP:
-    dec hl
-    ld a,(hl)
-    cp ' '
-    jr nz,_PSPS_DO
-    djnz _PSPS_Z_LOOP
-    pop hl
-    ret         ;All the string is spaces, do nothing
-
-_PSPS_DO:
-    pop hl
-_PSPS_P_LOOP:
-    ld a,(hl)
-    call CHPUT
-    inc hl
-    djnz _PSPS_P_LOOP
-
-    ret
 
 
 ;In:  BC = Required space

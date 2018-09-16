@@ -13,6 +13,7 @@
 
     include "driver.asm"
     include "inihrd_inienv.asm"
+    include "oemstat.asm"
     include "dskio_dskchg.asm"
     include "choice_dskfmt.asm"
     include "work_area.asm"
