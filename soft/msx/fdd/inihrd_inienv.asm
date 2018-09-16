@@ -139,11 +139,9 @@ READ_SECTOR_0:
     jr READ_SECTOR_0
 
 READ_SECTOR_0_CMD:
-    db 12
     db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
 
 INIQUIRY_CMD:
-    db 12
     db 12h, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0
   
 ROOKIE_S:

@@ -635,7 +635,7 @@ _USB_ECBIR_POPALL_END_NZ:
 ; -----------------------------------------------------------------------------
 ; USB_EXECUTE_CBI: Execute a command using CBI transport
 ; -----------------------------------------------------------------------------
-; Input:  HL = Address of a the command to execute, 1st byte is command length
+; Input:  HL = Address of the 12 byte command to execute
 ;         DE = Address of the input or output data buffer
 ;         BC = Length of data to send or receive
 ;         Cy = 0 to receive data, 1 to send data
@@ -645,10 +645,6 @@ _USB_ECBIR_POPALL_END_NZ:
 ;         E  = ASCQ (if no error)
 
 USB_EXECUTE_CBI:
-    inc hl
-    ld a,(hl)   ;First byte of the command
-    dec hl
-
     exx
     ex af,af
     ld bc,64
@@ -664,7 +660,7 @@ _USB_EXE_CBI_STEP_1:
 
     push de ;Data buffer address
     push bc ;Data length
-    push af ;Command first byte + toggle bit
+    push af ;Toggle bit
     push hl ;Command address
 
     push ix
@@ -676,9 +672,6 @@ _USB_EXE_CBI_STEP_1:
     ld (ix+4),a
     pop de  ;DE = Command (was HL)
     ;* 3 items remaining in stack
-    ld a,(de)
-    ld (ix+6),a ;Command length
-    inc de  ;Start of command
     push ix
     pop hl  ;HL = ADSC setup block
     
@@ -811,8 +804,7 @@ _USB_EXE_CBI_END:
     ret
 
 CBI_ADSC:
-    db 21h, 0, 0, 0, 255, 0, 255, 0 ;5th byte is interface number, 6th byte is command length
+    db 21h, 0, 0, 0, 255, 0, 12, 0 ;4th byte is interface number, 6th byte is command length
 
 UFI_CMD_REQUEST_SENSE:
-    db 12
     db REQUEST_SENSE_CMD_CODE, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0

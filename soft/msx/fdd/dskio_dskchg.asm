@@ -54,8 +54,8 @@ _DSKIO_OK_UNIT:
     ldir
     pop ix      ;IX = Read Sector command
     exx
-    ld (ix+4+1),d   ;First sector number
-    ld (ix+5+1),e
+    ld (ix+4),d   ;First sector number
+    ld (ix+5),e
     ex de,hl    ;DE = Transfer address
 
     ;* Sector read loop. 
@@ -109,11 +109,11 @@ _DSKIO_READ_STEP_OK:
     pop bc
     inc c   ;Update total sectors already read count
 
-    ld h,(ix+4+1)
-    ld l,(ix+5+1)
+    ld h,(ix+4)
+    ld l,(ix+5)
     inc hl      ;Update sector number
-    ld (ix+4+1),h
-    ld (ix+5+1),l
+    ld (ix+4),h
+    ld (ix+5),l
 
     djnz _DSKIO_READ_LOOP 
     jr _DSKIO_READ_END
@@ -165,7 +165,6 @@ _DSKIO_READ_ONE:
     ret
 
 _UFI_READ_SECTOR_CMD:
-    db 12
     db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 
@@ -271,6 +270,5 @@ _DSKCHG_BUILD_DPB:
     ret
 
 READ_0_SECTORS_CMD:
-    db 12
     db 28h, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
