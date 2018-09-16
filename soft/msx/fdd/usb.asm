@@ -1,6 +1,6 @@
 USB_DEVICE_ADDRESS: equ 1
 
-USB_CLASS_MASS: equ 0ffh ;8
+USB_CLASS_MASS: equ 8
 USB_SUBCLASS_CBI: equ 4
 USB_PROTO_WITH_INT_EP: equ 0
 
@@ -100,6 +100,17 @@ USB_INIT_DEV:
     ld b,2
     call WK_SET_EP_SIZE
 
+    ;* HACK: Store VID and PID to allow Konamiman's non-standard FDD unit to be used
+
+    ;TODO: Get full device descriptor if HW_IMPL_GET_DEV_DESCR=0
+
+    ld l,(ix+8)
+    ld h,(ix+9)
+    ld (PROCNM),hl
+    ld l,(ix+10)
+    ld h,(ix+11)
+    ld (PROCNM+2),hl
+
     ;--- Get configuration descriptor (we'll look at the first configuration only)
 
     pop de
@@ -137,6 +148,24 @@ _INIT_USB_CHECK_IFACE:
     or a
     jr nz,_INIT_USB_SKIP_IFACE
 
+    ;* HACK: Check if it's Konamiman's non-standard FDD (VID=0644h, PID=0001h)
+
+    ld hl,(PROCNM)
+    ld a,l
+    cp 44h
+    jr nz,_INIT_USB_CHECK_IFACE_2
+    ld a,h
+    cp 6
+    jr nz,_INIT_USB_CHECK_IFACE_2
+    ld hl,(PROCNM+2)
+    ld a,l
+    dec a   ;cp 1
+    jr nz,_INIT_USB_CHECK_IFACE_2
+    ld a,h
+    or a
+    jr z,_INIT_USB_FOUND_CBI
+    
+_INIT_USB_CHECK_IFACE_2:
     ld a,(ix+5)
     cp USB_CLASS_MASS
     jr nz,_INIT_USB_SKIP_IFACE
