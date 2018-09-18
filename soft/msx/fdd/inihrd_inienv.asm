@@ -79,9 +79,13 @@ PRINT:
 	jr PRINT
 
 
+PRINT_DEVICE_INFO_STACK_SPACE: equ 36
+
 PRINT_DEVICE_INFO:
-    ld b,36
-    call STACKALLOC
+    ld hl,-PRINT_DEVICE_INFO_STACK_SPACE
+    add hl,sp
+    ld sp,hl
+
     push hl
     pop de
     ld hl,INIQUIRY_CMD
@@ -112,13 +116,15 @@ PRINT_DEVICE_INFO:
     ld b,4
     call PRINT_SPACE_PADDED_STRING
 
-    call STACKFREE
-    ret
+    jr _PRINT_DEVICE_INFO_END
 
 _PRINT_DEVICE_INFO_ERR:
     ld hl,ERR_INQUIRY_S
     call PRINT_ERROR
-    call STACKFREE
+_PRINT_DEVICE_INFO_END:    
+    ld hl,PRINT_DEVICE_INFO_STACK_SPACE
+    add hl,sp
+    ld sp,hl
     ret
 
 INIQUIRY_CMD:
@@ -179,6 +185,7 @@ READ_SECTOR_0:
     ld hl,9000h
     call DSKCHG
 
+DO_READ_SECTOR_CMD:
     ld hl,READ_SECTOR_0_CMD
     ld de,9000h
     ld bc,512
@@ -191,6 +198,7 @@ READ_SECTOR_0_CMD:
     db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
 
     endif
+
   
 ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10
@@ -233,30 +241,3 @@ PRINT_ERROR:
     call CHPUT
     ld hl,CRLF_S
     jp PRINT
-
-
-
-;In:  BC = Required space
-;Out: HL = Address of allocated space
-STACKALLOC:
-    pop ix
-    ld hl,0
-    or a
-    sbc hl,bc
-    add hl,sp
-    ld sp,hl
-    push bc
-    push ix
-    ret
-
-STACKFREE:
-    push af
-    pop iy
-    pop ix
-    pop hl
-    add hl,sp
-    ld sp,hl
-    push ix
-    push iy
-    pop af
-    ret

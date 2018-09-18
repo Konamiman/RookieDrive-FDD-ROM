@@ -15,6 +15,8 @@
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
+DSKIO_STACK_SPACE: equ 32
+
 DSKIO:
     push af
     or a
@@ -44,19 +46,25 @@ _DSKIO_OK_UNIT:
     ld a,12
     ret c   ;No device is connected
 
-    exx
-    ld bc,13
-    call STACKALLOC
+    ld ix,-DSKIO_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+
     push hl
-    ex de,hl
+    push de
+    push bc
+
+    push ix
+    pop de
     ld hl,_UFI_READ_SECTOR_CMD
-    ld bc,13
+    ld bc,12
     ldir
-    pop ix      ;IX = Read Sector command
-    exx
+    
+    pop bc
+    pop de
     ld (ix+4),d   ;First sector number
     ld (ix+5),e
-    ex de,hl    ;DE = Transfer address
+    pop de      ;DE = Transfer address
 
     ;* Sector read loop. 
     ;  We read sectors one by one always, because some FDD units
@@ -119,13 +127,17 @@ _DSKIO_READ_STEP_OK:
     jr _DSKIO_READ_END
 
 _DSKIO_READ_END_POP:
-    pop de
+    pop hl
     pop bc
 _DSKIO_READ_END:    
     ld b,c
-    ex af,af
-    call STACKFREE
-    ex af,af
+    push af
+    pop hl
+    ld ix,DSKIO_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+    push hl
+    pop af
     ret
 
     ;--- Routine for reading one sector
@@ -176,28 +188,28 @@ _UFI_READ_SECTOR_CMD:
 
 ASC_TO_ERR:
     call _ASC_TO_ERR
-    ld a,c
+    ld a,h
     ret
 
 _ASC_TO_ERR:
     cp 27h      ;Write protected
-    ld c,0
+    ld h,0
     ret z
     cp 3Ah      ;Not ready
-    ld c,2
+    ld h,2
     ret z
     cp 10h      ;CRC error
-    ld c,4
+    ld h,4
     ret z
     cp 21h      ;Invalid logical block
-    ld c,6
+    ld h,6
     ret z
     cp 02h      ;Seek error
     ret z
     cp 03h
-    ld c,10
+    ld h,10
     ret z
-    ld c,12     ;Other error
+    ld h,12     ;Other error
     ret
 
 
@@ -235,13 +247,8 @@ DSKCHG:
 
     push hl
     ld hl,READ_0_SECTORS_CMD
-    ld de,(SECBUF)
-    push de
-    ld bc,13
-    ldir
-
-    pop hl
-    ld bc,0 ;We don't actually retrieve any data
+    ld de,0  ;"Discard data" just in case, we won't actually retrieve any data
+    ld bc,0
     xor a   ;Don't retry "media changed" + Cy=0 (read data)
     call USB_EXECUTE_CBI_WITH_RETRY
 

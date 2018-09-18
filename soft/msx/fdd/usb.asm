@@ -62,9 +62,14 @@ _USB_CHECK_DEV_CHANGE_NO_DEV:
 ;         B = Error code (one of USB_ERR_*) if A = 2
 ; -----------------------------------------------------------------------------
 
+USB_INIT_DEV_STACK_SPACE: equ 64
+
 USB_INIT_DEV:
-    ld bc,128
-    call STACKALLOC ;HL = Temporary work area in stack
+    ld ix,-USB_INIT_DEV_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+    push ix
+    pop hl
 
     push hl
 
@@ -104,12 +109,14 @@ USB_INIT_DEV:
 
     ;TODO: Get full device descriptor if HW_IMPL_GET_DEV_DESCR=0
 
+    if 1
     ld l,(ix+8)
     ld h,(ix+9)
     ld (PROCNM),hl
     ld l,(ix+10)
     ld h,(ix+11)
     ld (PROCNM+2),hl
+    endif
 
     ;--- Get configuration descriptor (we'll look at the first configuration only)
 
@@ -150,6 +157,7 @@ _INIT_USB_CHECK_IFACE:
 
     ;* HACK: Check if it's Konamiman's non-standard FDD (VID=0644h, PID=0001h)
 
+    if 1
     ld hl,(PROCNM)
     ld a,l
     cp 44h
@@ -164,6 +172,7 @@ _INIT_USB_CHECK_IFACE:
     ld a,h
     or a
     jr z,_INIT_USB_FOUND_CBI
+    endif
     
 _INIT_USB_CHECK_IFACE_2:
     ld a,(ix+5)
@@ -315,9 +324,9 @@ _USB_INIT_DEV_ERR:
     ld a,2
 
 _USB_INIT_DEV_END:
-    ld c,a
-    call STACKFREE
-    ld a,c
+    ld ix,USB_INIT_DEV_STACK_SPACE
+    add ix,sp
+    ld sp,ix
     ret
 
     ;* Skip the current descriptor
@@ -510,12 +519,15 @@ _USB_DATA_IN_OK:
 ;            1: bulk IN
 ;            2: interrupt IN
 
+USB_CLEAR_ENDPOINT_HALT_STACK_SPACE: equ 8
+
 USB_CLEAR_ENDPOINT_HALT:
-    ex af,af
-    ld bc,8
-    call STACKALLOC
-    ex af,af
     push af
+    pop hl
+    ld ix,-USB_CLEAR_ENDPOINT_HALT_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+    push hl ;Was A
 
     ex de,hl
     push de
@@ -536,7 +548,9 @@ USB_CLEAR_ENDPOINT_HALT:
     call z,WK_SET_TOGGLE_BIT
 
     ld d,a
-    call STACKFREE
+    ld ix,USB_CLEAR_ENDPOINT_HALT_STACK_SPACE
+    add ix,sp
+    ld sp,ix
     ld a,d
     ret
 
@@ -544,6 +558,7 @@ USB_CMD_CLEAR_ENDPOINT_HALT:
     db 2, 1, 0, 0, 255, 0, 0, 0     ;byte 4 is the endpoint to be cleared
 
 ;!!!TESTING
+    if 0
 SET_HALT:
     push bc,de,hl,ix,iy
     ld hl,USB_CMD_SET_ENDPOINT_HALT
@@ -555,6 +570,7 @@ ENDPOINT_HALTED: equ 81h
 
 USB_CMD_SET_ENDPOINT_HALT:
     db 2, 3, 0, 0, ENDPOINT_HALTED, 0, 0, 0    
+    endif
 ;!!!
 
 
@@ -673,24 +689,18 @@ _USB_ECBIR_POPALL_END_NZ:
 ;         D  = ASC (if no error)
 ;         E  = ASCQ (if no error)
 
+USB_EXECUTE_CBI_STACK_SPACE: equ 8+18
+
 USB_EXECUTE_CBI:
-    exx
-    ex af,af
-    ld bc,64
-    call STACKALLOC
+    push af
+    pop iy
+    ld ix,-USB_EXECUTE_CBI_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+
     push hl
-    pop ix  ;IX = Start of stack allocated area
-    ex af,af
-    exx
-
-    ;>>> STEP 1: Send command
-
-_USB_EXE_CBI_STEP_1:
-
-    push de ;Data buffer address
-    push bc ;Data length
-    push af ;Toggle bit
-    push hl ;Command address
+    push de
+    push bc
 
     push ix
     pop de
@@ -699,63 +709,88 @@ _USB_EXE_CBI_STEP_1:
     ldir
     call WK_GET_IFACE_NUMBER
     ld (ix+4),a
-    pop de  ;DE = Command (was HL)
-    ;* 3 items remaining in stack
-    push ix
-    pop hl  ;HL = ADSC setup block
-    
-    push ix
-    call USB_CONTROL_TRANSFER
-    pop ix
-    ld bc,0     ;If we return now, transferred data = 0
 
+    pop bc
+    pop de
+    pop hl
+    push iy
+    pop af
+
+    push ix
+    call _USB_EXECUTE_CBI_CORE
+    pop ix
+    cp USB_ERR_STALL
+    ld de,0 ;ASC+ASCQ in case we return now
+    jr nz,_USB_EXE_CBI_END  ;Return on succes or USB error other than stall
+    ;jr _USB_EXE_CBI_END
+
+_USB_EXECUTE_REQUEST_SENSE:
+    push bc ;Data actually transferred
+
+    push ix 
+    ld bc,8
+    add ix,bc
+    push ix
+    pop de  ;DE = Buffer for request sense data
+
+    pop ix  ;IX = Prepared ADSC
+    push de
+    ld hl,UFI_CMD_REQUEST_SENSE
+    ld bc,18
+    or a    ;receive data
+    call _USB_EXECUTE_CBI_CORE
+
+    pop ix
+    pop bc
+    ld d,(ix+12)
+    ld e,(ix+13)
+
+_USB_EXE_CBI_END:
+    ld ix,USB_EXECUTE_CBI_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+    ret
+
+    ;Does not retry, nor request sense
+    ;In: IX=Prepared ADSC, HL = command, DE=data buffer, BC=data length, Cy=0 to receive
+    ;Out: A=USB error code (STALL if non-zero ASC), BC=data transferred
+_USB_EXECUTE_CBI_CORE:
+
+    ;>>> STEP 1: Send command
+
+_USB_EXE_CBI_STEP_1:
+    push af ;Send or receive flag
+    push de ;Data buffer address
+    push bc ;Data length
+
+    ex de,hl    ;Now DE = UFI command (data for the USB ADSC)
+    push ix
+    pop hl      ;HL = Prepared ADSC
+    call USB_CONTROL_TRANSFER
     or a
     jr z,_USB_EXE_CBI_STEP_2
-    cp USB_ERR_STALL
-    jp nz,_USB_EXE_CBI_POP3_END
-
-    pop af
-    push af
-    cp REQUEST_SENSE_CMD_CODE   ;Do not try request sense if that's what we are trying to execute now
-    ld a,USB_ERR_STALL
-    jr z,_USB_EXE_CBI_POP3_END
 
     pop hl
     pop hl
     pop hl
-    jr _USB_EXE_DO_REQUEST_SENSE
+    ld bc,0
+    ret
 
     ;>>> STEP 2: Send or receive data
 
 _USB_EXE_CBI_STEP_2:
+    pop bc  ;Data length
+    pop hl  ;was DE, data buffer
     pop af
-    push af
     jr c,_USB_EXE_CBI_DATA_OUT
 
 _USB_EXE_CBI_DATA_IN:
-    pop af
-    pop bc
-    pop hl  ;was DE
-    or a
-    push af
-    ;* 1 item remaining in stack
-    push ix
+    or a    ;From bulk endpoint
     call USB_DATA_IN_TRANSFER
-    pop ix
 
     or a
     jr z,_USB_EXE_CBI_STEP_3
-    cp USB_ERR_STALL
-    jp nz,_USB_EXE_CBI_POP1_END
-
-    pop af
-    push af
-    cp REQUEST_SENSE_CMD_CODE   ;Do not try request sense if that's what we are trying to execute now
-    ld a,USB_ERR_STALL
-    jr z,_USB_EXE_CBI_POP1_END
-
-    pop hl
-    jr _USB_EXE_DO_REQUEST_SENSE
+    ret
 
 _USB_EXE_CBI_DATA_OUT:
     ;TODO...
@@ -763,77 +798,34 @@ _USB_EXE_CBI_DATA_OUT:
     ;>>> STEP 3: Get status from INT endpoint
 
 _USB_EXE_CBI_STEP_3:
-    push ix
-    pop hl
     push bc ;We need to save the amount of data received
-    ;* 2 items in stack
+    push bc ;Allocate 2 bytes on stack
+    ld hl,0
+    add hl,sp   ;HL = 2 byte buffer for INT data
     ld bc,2
     scf
-    push ix
     call USB_DATA_IN_TRANSFER
-    pop ix
-
-    or a
-    pop hl  ;was BC
-    pop de  ;was AF
-    jr z,_USB_EXE_CBI_STEP_3_1
-    cp USB_ERR_STALL
-    jp nz,_USB_EXE_CBI_END
-
-    push de
-    pop af
-    push hl
-    ;* 1 item in stack
-    cp REQUEST_SENSE_CMD_CODE   ;Do not try request sense if that's what we are trying to execute now
-    ld a,USB_ERR_STALL    
-    jr z,_USB_EXE_CBI_POP1_END
-
-    ;>>> STEP 3.1: If ASC=0 we're done, otherwise clear error with Reques Sense
-
-_USB_EXE_CBI_STEP_3_1:
-    ld a,b
-    or c
-    push hl
-    pop bc   ;Received data count
-    jr z,_USB_EXE_DO_REQUEST_SENSE  ;No data received from INT endpoint: assume error
-
-    ld a,(ix)
-    or a
-    ld de,0 ;ASC + ASCQ
-    jr z,_USB_EXE_CBI_END
-
-    ;>>> Execute REQUEST SENSE
-    ;    Input: BC = Received data count
-
-_USB_EXE_DO_REQUEST_SENSE:
+    pop hl ;L = ASC, H = ASCQ
     push bc
-
-    push ix
-    pop de; Data buffer
-    ld hl,UFI_CMD_REQUEST_SENSE
-    ld bc,14
+    pop de  ;Amount of data transferred from INT endpoint
+    pop bc  ;Amount of data received from bulk in
     or a
-    push ix
-    call USB_EXECUTE_CBI
-    pop ix
+    ret nz  ;Return on any USB error
 
-    pop bc
-    ld d,(ix+12)    ;ASC
-    ld e,(ix+13)    ;ASCQ
-    jr _USB_EXE_CBI_END
-    
-_USB_EXE_CBI_POP3_END:
-    pop hl
-_USB_EXE_CBI_POP2_END:
-    pop hl
-_USB_EXE_CBI_POP1_END:
-    pop hl
-_USB_EXE_CBI_END:
-    call STACKFREE
+    ld a,d
+    or e
+    ld a,USB_ERR_STALL
+    ret z   ;Return if no data transferred from INT endpoint
+
+    ld a,h  ;ASC or ASCQ not zero?
+    or l
+    ld a,USB_ERR_STALL
+    ret nz
+    xor a
     ret
 
 CBI_ADSC:
     db 21h, 0, 0, 0, 255, 0, 12, 0 ;4th byte is interface number, 6th byte is command length
 
 UFI_CMD_REQUEST_SENSE:
-    db REQUEST_SENSE_CMD_CODE, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0
+    db REQUEST_SENSE_CMD_CODE, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0
