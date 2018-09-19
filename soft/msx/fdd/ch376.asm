@@ -16,8 +16,6 @@ USB_ERR_DATA_ERROR: equ 4
 USB_ERR_NO_DEVICE: equ 5
 USB_ERR_OTHER: equ 9
 
-CH_RESET_WAIT_AMOUNT: equ 1    ;35 for real hardware, can be less when using Noobtocol
-
 ;--- Routine implementation constants
 ;    HW_IMPL_(routine) needs to be 1 if HW_(routine) is implemented
 
@@ -109,7 +107,12 @@ HW_RESET:
     ld a,CH_CMD_RESET_ALL
     out (CH_COMMAND_PORT),a
 
-    call CH_WAIT_35
+    ld bc,1000
+_HW_RESET_WAIT:     ;Wait for reset to complete, theorically 35ms
+    dec bc
+    ld a,b
+    or c
+    jr nz,_HW_RESET_WAIT
 
     call CH_DO_SET_NOSOF_MODE
     ret c
@@ -422,26 +425,6 @@ _CH_DATA_OUT_DONE_2:
 ; =============================================================================
 ; Auxiliary routines
 ; =============================================================================
-
-
-; --------------------------------------
-; CH_WAIT_35: Wait 35ms
-
-CH_WAIT_35:
-    ld bc,CH_RESET_WAIT_AMOUNT
-_CH_DELAY_LOOP:
-    ld a,CH_CMD_DELAY_100US
-    out (CH_COMMAND_PORT),a
-_CH_DELAY_WAIT:
-    in a,(CH_DATA_PORT)
-    or a
-    jr z,_CH_DELAY_WAIT
-    dec bc
-    ld a,b
-    or c
-    jr nz,_CH_DELAY_LOOP
-    ret
-
 
 ; --------------------------------------
 ; CH_CHECK_INT_IS_ACTIVE

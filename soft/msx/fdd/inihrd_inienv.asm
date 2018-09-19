@@ -30,12 +30,19 @@ INIHRD:
 
 INIENV:
 
-WAIT_KEY: equ 1
+WAIT_KEY: equ 0
 
     if WAIT_KEY = 1
     ld hl,INIHRD_NEXT
     push hl
     endif
+
+    call RESET_AND_PRINT_INFO
+    ld b,30
+DELAY_AFTER_PRINT:
+    halt
+    djnz DELAY_AFTER_PRINT
+    ret
 
 RESET_AND_PRINT_INFO:
     call HW_TEST
