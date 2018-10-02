@@ -5565,6 +5565,8 @@ A5FC2:	call	A5FCD			; get my SLTWRK entry
 	;inc	hl
 	;ld	h,(hl)
 	;ld	l,a			; pointer to workarea
+    dec hl
+    dec hl
 	push	hl
 	pop	ix
 	ret

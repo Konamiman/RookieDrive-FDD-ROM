@@ -72,6 +72,7 @@ USB_INIT_DEV:
     pop hl
 
     push hl
+    call WK_ZERO
 
     ;--- Initialize work area: assume max endpoint 0 packet size is 8 bytes
 
@@ -609,6 +610,17 @@ _USB_PROCESS_ERROR_END:
 ; Output: Same as USB_EXECUTE_CBI
 
 USB_EXECUTE_CBI_WITH_RETRY:
+    call _USB_EXECUTE_CBI_WITH_RETRY
+    push af
+    push bc
+    push de
+    call WK_SET_ERROR
+    pop de
+    pop bc
+    pop af
+    ret
+
+_USB_EXECUTE_CBI_WITH_RETRY:
     push hl
     push de
     push bc

@@ -60,6 +60,9 @@ WK_ZERO:
     ld (ix),0
     ld (ix+1),0
     ld (ix+2),0
+    ld (ix+5),0
+    ld (ix+6),0
+    ld (ix+7),0
     pop ix
     ret
 
@@ -181,4 +184,27 @@ WK_GET_IFACE_NUMBER:
     pop ix
     ret
 
-    
+
+;In: A=USB error, D=ASC, E=ASCQ    
+WK_SET_ERROR:
+    push ix
+    push af
+    push de
+    call GETWRK
+    pop de
+    pop af
+    ld (ix+5),a
+    ld (ix+6),d
+    ld (ix+7),e
+    pop ix
+    ret
+
+;Out: A=USB error, D=ASC, E=ASCQ    
+WK_GET_ERROR:
+    push ix
+    call GETWRK
+    ld a,(ix+5)
+    ld d,(ix+6)
+    ld e,(ix+7)
+    pop ix
+    ret
