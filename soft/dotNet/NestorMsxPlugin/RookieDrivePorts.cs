@@ -2,6 +2,11 @@
 using Konamiman.RookieDrive.Usb;
 using System.Collections.Generic;
 using Konamiman.Z80dotNet;
+using System.Diagnostics;
+using Konamiman.NestorMSX.Hardware;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace Konamiman.RookieDrive.NestorMsxPlugin
 {
@@ -16,11 +21,139 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
         public int multiDataTransferPointer;
         public int multiDataTransferRemaining = 0;
         public bool waitingMultiDataTransferLength = false;
+        private readonly IZ80Processor cpu;
+        private bool dskioCalled = false;
+        private bool dskchgCalled = false;
+        private ushort returnAddress;
+        private IExternallyControlledSlotsSystem slots;
+        private bool dataInTransfer = false;
+        private readonly IDictionary<string, ushort> symbolsByName = new Dictionary<string, ushort>();
+        private readonly Stack<ushort> trackedCallsStack = new Stack<ushort>();
+        private readonly Stack<string> trackedCallsStackSymbols = new Stack<string>();
+        private readonly Dictionary<ushort, string> addressesToLog;
+        private string indentation = "";
+
+        private readonly string[] symbolsToLog = new[] {
+            "DSKIO",
+            "DSKCHG",
+            "USB_DATA_IN_TRANSFER",
+            "USB_CONTROL_TRANSFER",
+            "HW_CONTROL_TRANSFER",
+            //"HW_DATA_IN_TRANSFER",
+            //"USB_EXECUTE_CBI_WITH_RETRY",
+            "USB_EXECUTE_CBI",
+            "CH_READ_DATA",
+            "_USB_EXECUTE_CBI_CORE"
+        };
 
         public RookieDrivePortsPlugin(PluginContext context, IDictionary<string, object> pluginConfig)
         {
             context.Cpu.MemoryAccess += Cpu_MemoryAccess;
             chPorts = UsbServiceProvider.GetCH376Ports();
+            cpu = context.Cpu;
+            slots = context.SlotsSystem;
+            context.Cpu.BeforeInstructionFetch += Cpu_BeforeInstructionFetch;
+            ParseSymbols(@"C:\code\fun\RookieDrive\soft\msx\fdd\.sym");
+            addressesToLog = symbolsToLog.ToDictionary(s => symbolsByName[s], s => s);
+            //cpu.BeforeInstructionExecution += Cpu_BeforeInstructionExecution;
+        }
+
+        private static readonly byte[] ldirOpcode = new byte[] {0xED, 0xB0};
+        private void Cpu_BeforeInstructionExecution(object sender, BeforeInstructionExecutionEventArgs e)
+        {
+            if (indentation != "" && e.Opcode.SequenceEqual(ldirOpcode))
+                Debug.WriteLine($"{indentation}LDIR from 0x{cpu.Registers.HL:X4} to 0x{cpu.Registers.DE:X4}, length {cpu.Registers.BC}");
+        }
+
+        private void ParseSymbols(string symbolsFilePath)
+        {
+            var lines = File.ReadAllLines(symbolsFilePath);
+            var symbols = new Dictionary<string, ushort>();
+            foreach (var line in lines)
+            {
+                var label = line.Split(':')[0];
+                var valueString = line.Split(' ').Last().TrimEnd('h').Substring(4);
+                var value = Convert.ToUInt16(valueString, 16);
+                symbolsByName.Add(label, value);
+            }
+        }
+
+        private void UdpateIndentation()
+        {
+            indentation = new string(' ', trackedCallsStack.Count);
+        }
+
+        private void Cpu_BeforeInstructionFetch(object sender, BeforeInstructionFetchEventArgs e)
+        {
+            var pc = cpu.Registers.PC;
+            if (addressesToLog.ContainsKey(pc))
+            {
+                var symbol = addressesToLog[pc];
+                Debug.WriteLine($"{indentation}--> {symbol}: HL=0x{cpu.Registers.HL:X4}, DE=0x{cpu.Registers.DE:X4}, BC={cpu.Registers.BC} (0x{cpu.Registers.BC:X4}), A={cpu.Registers.A}, Cy={cpu.Registers.CF}");
+                var returnAddress = NumberUtils.CreateUshort(cpu.Memory[cpu.Registers.SP], cpu.Memory[cpu.Registers.SP + 1]);
+                trackedCallsStack.Push(returnAddress);
+                trackedCallsStackSymbols.Push(symbol);
+                UdpateIndentation();
+            }
+            if (trackedCallsStack.Any() && trackedCallsStack.Peek() == pc)
+            {
+                trackedCallsStack.Pop();
+                var symbol = trackedCallsStackSymbols.Pop();
+                UdpateIndentation();
+                Debug.WriteLine($"{indentation}<-- {symbol}: HL=0x{cpu.Registers.HL:X4}, DE=0x{cpu.Registers.DE:X4}, BC={cpu.Registers.BC} (0x{cpu.Registers.BC:X4}), A={cpu.Registers.A}, Cy={cpu.Registers.CF}");
+            }
+
+#if false
+            if (cpu.Registers.PC == symbols["DSKIO"])
+            {
+                dskioCalled = true;
+                returnAddress = NumberUtils.CreateUshort(cpu.Memory[cpu.Registers.SP], cpu.Memory[cpu.Registers.SP + 1]);
+                Debug.WriteLine($"Read {cpu.Registers.B} sectors, first is {cpu.Registers.DE}, to 0x{cpu.Registers.HL:X4}, slot {slots.GetCurrentSlot(1)}");
+            }
+            else if (dskioCalled && cpu.Registers.PC == returnAddress)
+            {
+                dskioCalled = false;
+                if (cpu.Registers.CF == 0)
+                    Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}");
+                else
+                    Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}, D={cpu.Registers.D:X2}, E={cpu.Registers.E:X2}");
+            }
+            else if (cpu.Registers.PC == symbols["DSKCHG"])
+            {
+                dskchgCalled = true;
+                returnAddress = NumberUtils.CreateUshort(cpu.Memory[cpu.Registers.SP], cpu.Memory[cpu.Registers.SP + 1]);
+                Debug.WriteLine($"DSKCHG called, slot {slots.GetCurrentSlot(1)}");
+            }
+            else if (dskchgCalled && cpu.Registers.PC == returnAddress)
+            {
+                dskchgCalled = false;
+                Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}");
+            }
+            else if (cpu.Registers.PC == symbols["USB_DATA_IN_TRANSFER"])
+            {
+                Debug.WriteLine($"USB_DATA_IN_TRANSFER: HL=0x{cpu.Registers.HL:X4}, BC={cpu.Registers.BC}, Cy={cpu.Registers.CF}");
+                dataInTransfer = true;
+            }
+            else if (cpu.Registers.PC == symbols["USB_DATA_IN_TRANSFER"] + 3)
+            {
+                Debug.WriteLine($"  Result USB DATA IN: A={cpu.Registers.A}, BC={cpu.Registers.BC}");
+                dataInTransfer = true;
+            }
+            else if (cpu.Registers.PC == symbols["HW_DATA_IN_TRANSFER"])
+            {
+                Debug.WriteLine($"HW_DATA_IN_TRANSFER: HL=0x{cpu.Registers.HL:X4}, BC={cpu.Registers.BC}");
+                dataInTransfer = true;
+            }
+            else if (cpu.Registers.PC == 0x7A48 + 3)
+            {
+                dataInTransfer = false;
+                Debug.WriteLine($"  Result HW DATA IN: A={cpu.Registers.A}, BC={cpu.Registers.BC}");
+            }
+            else if(cpu.Registers.PC == 0x7DDF && slots[cpu.Registers.HL] == 0x28)
+            {
+                Debug.WriteLine($"CBI Read Sector: {cpu.Registers.BC} bytes to 0x{cpu.Registers.HL:X4}");
+            }
+#endif
         }
 
         private void Cpu_MemoryAccess(object sender, MemoryAccessEventArgs e)
@@ -94,6 +227,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                         waitingMultiDataTransferLength = true;
                 }
             }
+            
         }
     }
 }
