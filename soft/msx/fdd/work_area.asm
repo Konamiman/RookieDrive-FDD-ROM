@@ -56,7 +56,7 @@ _WK_SET_EP_SIZE_DO:
 ;Zero the entire work area
 WK_ZERO:
     push ix
-    call GETWRK
+    call WK_GETWRK
     ld (ix),0
     ld (ix+1),0
     ld (ix+2),0
@@ -96,7 +96,7 @@ WK_GET_EP_SIZE:
 ;Z and NC if work area is zeroed, NZ if it has contents
 WK_HAS_CONTENTS:
     push ix
-    call GETWRK
+    call WK_GETWRK
     ld a,(hl)
     or a
     pop ix
@@ -160,7 +160,7 @@ WK_GET_TOGGLE_BIT:
 WK_GET_POINTER:
     push af
     push bc
-    call GETWRK
+    call WK_GETWRK
     pop bc
     ld c,b
     ld b,0
@@ -171,7 +171,7 @@ WK_GET_POINTER:
 WK_SET_IFACE_NUMBER:
     push ix
     push af
-    call GETWRK
+    call WK_GETWRK
     pop af
     ld (ix+3),a
     pop ix
@@ -179,7 +179,7 @@ WK_SET_IFACE_NUMBER:
 
 WK_GET_IFACE_NUMBER:
     push ix
-    call GETWRK
+    call WK_GETWRK
     ld a,(ix+3)
     pop ix
     ret
@@ -190,7 +190,7 @@ WK_SET_ERROR:
     push ix
     push af
     push de
-    call GETWRK
+    call WK_GETWRK
     pop de
     pop af
     ld (ix+5),a
@@ -202,9 +202,65 @@ WK_SET_ERROR:
 ;Out: A=USB error, D=ASC, E=ASCQ    
 WK_GET_ERROR:
     push ix
-    call GETWRK
+    call WK_GETWRK
     ld a,(ix+5)
     ld d,(ix+6)
     ld e,(ix+7)
     pop ix
     ret
+
+
+; This is the GETWRK routine copied from the kernel, we need it here
+; because the work area related code lives in ROM bank 1.
+;
+; Output: HL = IX = pointer to 8 byte area for the slot in SLTWRK
+
+WK_GETWRK:
+	call _WK_GETSLTWRK			; get my SLTWRK entry
+    dec hl
+    dec hl
+	push hl
+	pop	ix
+	ret
+
+;	Subroutine	get my SLTWRK entry
+;	Inputs		-
+;	Outputs		HL = pointer to SLTWRK entry
+
+_WK_GETSLTWRK:
+	call _WK_GETEXPTBL			; get my primairy slot
+	add	a,a
+	add	a,a
+	add	a,a
+	scf
+	adc	a,a			; primary slot*4 + 1
+	ld c,a
+	ld a,(hl)
+	add	a,a
+	sbc	a,a
+	and	00CH			; 0 for non expanded, 0CH for expanded
+	inc	hl
+	inc	hl
+	inc	hl
+	inc	hl
+	and	(hl)
+	or c
+	add	a,a			; word entries
+	ld hl,SLTWRK
+	jr _WK_ADDHLA
+
+;	Subroutine	get my EXPTBL entry
+;	Inputs		-
+;	Outputs		HL = pointer to SLTWRK entry
+
+_WK_GETEXPTBL:
+	call 0F365h  ;read primary slotregister
+	rrca
+	rrca
+	and	003H
+	ld hl,EXPTBL
+	ld b,000H
+_WK_ADDHLA:
+	ld c,a
+	add hl,bc
+	ret    

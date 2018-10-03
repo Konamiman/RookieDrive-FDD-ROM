@@ -58,17 +58,19 @@ OEM_COMMANDS:
     db 0
 
 OEMC_USBRESET:
-    call RESET_AND_PRINT_INFO
+    ld ix,RESET_AND_PRINT_INFO
+    call CALL_BANK_1
     jp OEM_END
 
 OEMC_USBERROR:
-    call WK_GET_ERROR
+    ld ix,WK_GET_ERROR
+    call CALL_BANK_1
     or a
     jr z,_OEMC_USBERROR_ASC
 
     push af
     ld hl,OEM_S_USBERR
-    call PRINT
+    call OEM_PRINT
     pop af
     call OEM_PRINTHEX
     jr OEM_END
@@ -78,22 +80,22 @@ _OEMC_USBERROR_ASC:
     or a
     ld hl,OEM_S_NOERRDATA
     push af
-    call z,PRINT
+    call z,OEM_PRINT
     pop af
     jr z,OEM_END
 
     ld hl,OEM_S_ASC
-    call PRINT
+    call OEM_PRINT
     ld a,d
     call OEM_PRINTHEX
     ld hl,OEM_S_H_CRLF
-    call PRINT
+    call OEM_PRINT
     ld hl,OEM_S_ASCQ
-    call PRINT
+    call OEM_PRINT
     ld a,e
     call OEM_PRINTHEX
     ld hl,OEM_S_H_CRLF
-    call PRINT
+    call OEM_PRINT
 
 OEM_END:
     pop hl
@@ -128,3 +130,11 @@ _OEM_PRINTHEX_2:	or	0F0h
 
 	call CHPUT
 	ret
+
+OEM_PRINT:
+	ld a,(hl)
+	or a
+	ret z
+	call CHPUT
+	inc hl
+	jr OEM_PRINT

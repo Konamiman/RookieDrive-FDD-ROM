@@ -12,7 +12,7 @@
 ; Recreation NOT permitted without authorisation of the copyrightholders
 
 
-	ORG	04000H
+	;ORG	04000H
 
 
 ; symbols which must be defined by the diskdriver

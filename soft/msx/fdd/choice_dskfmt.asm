@@ -1,3 +1,16 @@
+; errorcodes used by DSKFMT
+;
+; 0	write protect error
+; 2	not ready error
+; 4	data (crc) error
+; 6	seek error
+; 8	record not found error
+; 10	write fault error
+; 12	bad parameter
+; 14	insufficient memory
+; 16	other error
+
+
 ; -----------------------------------------------------------------------------
 ; CHOICE
 ; -----------------------------------------------------------------------------
@@ -6,7 +19,7 @@
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
-CHOICE:
+CHOICE_IMPL:
 	ld   hl,0
 	ret
 
@@ -23,7 +36,7 @@ CHOICE:
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
-DSKFMT:
+DSKFMT_IMPL:
 	ld   a,16
 	scf
 	ret

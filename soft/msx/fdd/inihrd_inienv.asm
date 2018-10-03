@@ -12,7 +12,7 @@ INITXT: equ 006Ch
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
-INIHRD:
+INIHRD_IMPL:
     call INITXT
 	ld hl,ROOKIE_S
 	jp PRINT
@@ -28,7 +28,7 @@ INIHRD:
 ; Remark:	-
 ; -----------------------------------------------------------------------------
 
-INIENV:
+INIENV_IMPL:
 
 WAIT_KEY: equ 0
 
