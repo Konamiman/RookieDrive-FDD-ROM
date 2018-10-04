@@ -327,7 +327,7 @@ GETDPB_IMPL:
 	inc  hl
 	push hl
 	ex   de,hl
-	ld   hl,DEFDPB+1
+	ld   hl,DEFDPB_1+1
 	ld   bc,18
 	ldir
 	pop  hl
@@ -432,21 +432,5 @@ GETDPBEND:
 	xor  a
 	ret
 
-DEFDPB:
-	db   0
-	;; default dpb
-	db   0F9h		; Media F9
-	dw   512		; 80 Tracks	
-	db   0Fh		; 9 sectors
-	db   04h		; 2 sides
-	db   01h		; 3.5" 720 Kb
-	db   02h
-	dw   1
-	db   2
-	db   112
-	dw   14
-	dw   714
-	db   3
-	dw   7
 
 
