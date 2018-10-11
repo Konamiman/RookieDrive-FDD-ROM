@@ -236,9 +236,6 @@ DEVERR_S:
 ERR_INQUIRY_S:
     db  "ERROR querying the device name: ",0
 
-DEV_DESC:
-    db 80h, 6, 0, 1, 0, 0, 20, 0 
-
 ;In: HL = Error message, A = Error code
 PRINT_ERROR:
     push af

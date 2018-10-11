@@ -79,5 +79,19 @@ namespace Konamiman.RookieDrive.Usb
             }
             return data;
         }
+
+        public void WriteMultipleData(byte[] data)
+        {
+            var index = 0;
+            var remaining = data.Length;
+            while(remaining > 0)
+            {
+                var blockLength = Math.Min(remaining, 256);
+                WriteToSerialPort(7, (byte)(blockLength == 256 ? 0 : blockLength));
+                serialPort.Write(data, index, blockLength);
+                index += blockLength;
+                remaining -= blockLength;
+            }
+        }
     }
 }

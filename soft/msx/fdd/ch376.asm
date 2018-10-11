@@ -397,13 +397,13 @@ _CH_DATA_OUT_DO:
     or a
     jr nz,_CH_DATA_OUT_DONE   ;DONE if error
 
-    pop de
+    pop bc
     pop af
     xor 40h     ;Update toggle
     push af
 
-    ld a,d
-    or e
+    ld a,b
+    or c
     jr z,_CH_DATA_OUT_DONE_2  ;DONE if no more data to transfer
 
     pop af  ;We need this to pass the next toggle to CH_ISSUE_TOKEN

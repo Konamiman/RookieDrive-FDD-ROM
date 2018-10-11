@@ -413,7 +413,7 @@ _USB_CONTROL_TRANSFER_DO:
 ; -----------------------------------------------------------------------------
 ; USB_DATA_IN_TRANSFER: Perform a USB data IN transfer
 ;
-; This routine differs from HW_CONTROL_TRANSFER in that:
+; This routine differs from HW_DATA_IN_TRANSFER in that:
 ;
 ; - Passing the device address is not needed
 ; - Passing endpoint max packet size is not needed, it's taken from work area
@@ -504,6 +504,77 @@ _USB_DATA_IN_OK:
     pop bc
     push de
     pop af
+    call WK_SET_TOGGLE_BIT
+    xor a
+    pop bc
+    ret
+
+
+; -----------------------------------------------------------------------------
+; USB_DATA_OUT_TRANSFER: Perform a USB data IN transfer
+;
+; This routine differs from HW_DATA_OUT_TRANSFER in that:
+;
+; - Passing the device address is not needed
+; - Passing endpoint max packet size is not needed, it's taken from work area
+; - Endpoint number is assumed to be the bulk out one
+; - It manages the state of the toggle bit in work area
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of a buffer for the data to send data
+;         BC = Data length
+; Output: A  = Error code (one of USB_ERR_*)
+
+USB_DATA_OUT_TRANSFER:
+    ld a,b
+    or c
+    ret z
+
+    push hl
+    push bc
+
+    ld b,0
+    call WK_GET_EP_NUMBER
+    ld e,a
+    ld b,0
+    call WK_GET_EP_SIZE
+    ld d,b
+
+    ;* Here E = Endpoint number, D = Endpoint size
+
+    ld b,0
+    push de
+    call WK_GET_TOGGLE_BIT
+    pop de
+
+    pop bc
+    pop hl
+    ld a,USB_DEVICE_ADDRESS
+    call HW_DATA_OUT_TRANSFER
+    push af
+    or a
+    pop de
+    ld a,d
+    jr z,_USB_DATA_OUT_OK
+
+    ;* On STALL error, clear endpoint HALT
+
+    cp USB_ERR_STALL
+    jp nz,USB_PROCESS_ERROR
+
+    xor a
+    push bc
+    call USB_CLEAR_ENDPOINT_HALT
+    pop bc
+    ld a,USB_ERR_STALL
+    ret
+
+    ;* On success, update toggle bit
+
+_USB_DATA_OUT_OK:
+    push bc ;Save retrieved data count
+    push de
+    pop af
+    ld b,0
     call WK_SET_TOGGLE_BIT
     xor a
     pop bc
@@ -675,7 +746,7 @@ _USB_ECBIR_DO_RETRY:
     pop bc
     pop de
     pop hl    
-    jr USB_EXECUTE_CBI_WITH_RETRY
+    jr _USB_EXECUTE_CBI_WITH_RETRY
 
     ;Success, or do not retry
 
@@ -805,7 +876,11 @@ _USB_EXE_CBI_DATA_IN:
     ret
 
 _USB_EXE_CBI_DATA_OUT:
-    ;TODO...
+    call USB_DATA_OUT_TRANSFER
+
+    or a
+    jr z,_USB_EXE_CBI_STEP_3
+    ret
 
     ;>>> STEP 3: Get status from INT endpoint
 

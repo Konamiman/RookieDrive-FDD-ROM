@@ -102,58 +102,6 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                 UdpateIndentation();
                 Debug.WriteLine($"{indentation}<-- {symbol}: HL=0x{cpu.Registers.HL:X4}, DE=0x{cpu.Registers.DE:X4}, BC={cpu.Registers.BC} (0x{cpu.Registers.BC:X4}), A={cpu.Registers.A}, Cy={cpu.Registers.CF}");
             }
-
-#if false
-            if (cpu.Registers.PC == symbols["DSKIO"])
-            {
-                dskioCalled = true;
-                returnAddress = NumberUtils.CreateUshort(cpu.Memory[cpu.Registers.SP], cpu.Memory[cpu.Registers.SP + 1]);
-                Debug.WriteLine($"Read {cpu.Registers.B} sectors, first is {cpu.Registers.DE}, to 0x{cpu.Registers.HL:X4}, slot {slots.GetCurrentSlot(1)}");
-            }
-            else if (dskioCalled && cpu.Registers.PC == returnAddress)
-            {
-                dskioCalled = false;
-                if (cpu.Registers.CF == 0)
-                    Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}");
-                else
-                    Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}, D={cpu.Registers.D:X2}, E={cpu.Registers.E:X2}");
-            }
-            else if (cpu.Registers.PC == symbols["DSKCHG"])
-            {
-                dskchgCalled = true;
-                returnAddress = NumberUtils.CreateUshort(cpu.Memory[cpu.Registers.SP], cpu.Memory[cpu.Registers.SP + 1]);
-                Debug.WriteLine($"DSKCHG called, slot {slots.GetCurrentSlot(1)}");
-            }
-            else if (dskchgCalled && cpu.Registers.PC == returnAddress)
-            {
-                dskchgCalled = false;
-                Debug.WriteLine($"  Result: A={cpu.Registers.A}, B={cpu.Registers.B}");
-            }
-            else if (cpu.Registers.PC == symbols["USB_DATA_IN_TRANSFER"])
-            {
-                Debug.WriteLine($"USB_DATA_IN_TRANSFER: HL=0x{cpu.Registers.HL:X4}, BC={cpu.Registers.BC}, Cy={cpu.Registers.CF}");
-                dataInTransfer = true;
-            }
-            else if (cpu.Registers.PC == symbols["USB_DATA_IN_TRANSFER"] + 3)
-            {
-                Debug.WriteLine($"  Result USB DATA IN: A={cpu.Registers.A}, BC={cpu.Registers.BC}");
-                dataInTransfer = true;
-            }
-            else if (cpu.Registers.PC == symbols["HW_DATA_IN_TRANSFER"])
-            {
-                Debug.WriteLine($"HW_DATA_IN_TRANSFER: HL=0x{cpu.Registers.HL:X4}, BC={cpu.Registers.BC}");
-                dataInTransfer = true;
-            }
-            else if (cpu.Registers.PC == 0x7A48 + 3)
-            {
-                dataInTransfer = false;
-                Debug.WriteLine($"  Result HW DATA IN: A={cpu.Registers.A}, BC={cpu.Registers.BC}");
-            }
-            else if(cpu.Registers.PC == 0x7DDF && slots[cpu.Registers.HL] == 0x28)
-            {
-                Debug.WriteLine($"CBI Read Sector: {cpu.Registers.BC} bytes to 0x{cpu.Registers.HL:X4}");
-            }
-#endif
         }
 
         private void Cpu_MemoryAccess(object sender, MemoryAccessEventArgs e)
@@ -186,13 +134,14 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                 else if (e.EventType == MemoryAccessEventType.BeforePortWrite)
                 {
                     e.CancelMemoryAccess = true;
-                    chPorts.WriteData(e.Value);
-#if false
+
                     if (waitingMultiDataTransferLength)
                     {
                         waitingMultiDataTransferLength = false;
+                        multiDataTransferBuffer = new byte[e.Value];
                         multiDataTransferPointer = 0;
                         multiDataTransferRemaining = e.Value;
+                        chPorts.WriteData(e.Value);
                     }
                     else if (multiDataTransferRemaining > 0)
                     {
@@ -200,15 +149,12 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                         multiDataTransferPointer++;
                         multiDataTransferRemaining--;
                         if(multiDataTransferRemaining == 0)
-                        {
-                            //...
-                        }
+                            chPorts.WriteMultipleData(multiDataTransferBuffer);
                     }
                     else
                     {
                         chPorts.WriteData(e.Value);
                     }
-#endif
                 }
             }
             else if (e.Address == 0x21)
@@ -223,7 +169,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                     e.CancelMemoryAccess = true;
                     chPorts.WriteCommand(e.Value);
 
-                    if (e.Value == CMD_RD_USB_DATA0)
+                    if (e.Value == CMD_RD_USB_DATA0 || e.Value == CMD_WR_HOST_DATA)
                         waitingMultiDataTransferLength = true;
                 }
             }

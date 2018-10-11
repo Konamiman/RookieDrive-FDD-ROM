@@ -33,17 +33,21 @@ DSKIO_IMPL:
     or a
     jr z,_DSKIO_OK_UNIT
 
+    bit 7,b ;Sanity check: transfer of 64K or more requested?
+    jr z,_DSKIO_OK_UNIT
+
     pop af
     ld a,12
     scf
     ret
 
 _DSKIO_OK_UNIT:
-    pop af
-    ld a,0  ;Write protected error
-    ret c
-
     ld a,b
+    pop bc
+    rrc c   ;Now C:7 = 0 to read, 1 to write
+    ld b,a
+
+    ;ld a,b
     or a
     ret z   ;Nothing to read
 
@@ -72,37 +76,48 @@ _DSKIO_OK_UNIT:
     ldir
     
     pop bc
+    bit 7,c
+    jr z,_DSKIO_OK_CMD
+    ld a,2Ah    ;Convert "Read sector" command into "Write sector" command
+    ld (ix),a
+_DSKIO_OK_CMD:    
     pop de
     ld (ix+4),d   ;First sector number
     ld (ix+5),e
     pop de      ;DE = Transfer address
 
-    ;* Sector read loop. 
-    ;  We read sectors one by one always, because some FDD units
+    ;* Sector transfer loop. 
+    ;  We read/write sectors one by one always, because some FDD units
     ;  choke when requested too many sectors at the same time
     ;  and become unresponsive until they are reset.
     ;
     ;  At this point:
-    ;  IX = Read sector command, with the proper sector number
+    ;  IX = Read or write sector command, with the proper sector number
     ;  DE = Transfer address
     ;  B  = Sector count
 
-    ld c,0  ;Count of sectors read so far
-_DSKIO_READ_LOOP:
+    ld a,c
+    and 80h
+    ld c,a  ;Count of sectors transferred so far (bit 7 is still 0 to read or 1 to write)
+_DSKIO_TX_LOOP:
     push bc
     push de
 
     ld a,d
     cp 3Eh
-    jr c,_DSKIO_READ_DIRECT
+    jr c,_DSKIO_TX_DIRECT
     and 80h
-    jr nz,_DSKIO_READ_DIRECT
+    jr nz,_DSKIO_TX_DIRECT
 
-    ;* Read using SECBUF and XFER (transfer address is between 4000h and 7FFFh)
+    ;* Transfer using SECBUF and XFER (transfer address is between 4000h and 7FFFh)
 
+    bit 7,c
+    jr nz,_DSKIO_WRITE_XFER
+
+_DSKIO_READ_XFER:
     ld de,(SECBUF)
-    call _DSKIO_READ_ONE
-    jr c,_DSKIO_READ_END_POP
+    call _DSKIO_TX_ONE
+    jr c,_DSKIO_TX_END_POP
 
     pop de
     push de
@@ -110,23 +125,36 @@ _DSKIO_READ_LOOP:
     ld bc,512
     call XFER
 
-    jr _DSKIO_READ_STEP_OK
+    jr _DSKIO_TX_STEP_OK
 
-    ;* Direct read
+_DSKIO_WRITE_XFER:
+    pop hl
+    push hl
+    ld de,(SECBUF)
+    ld bc,512
+    call XFER
 
-_DSKIO_READ_DIRECT:
-    call _DSKIO_READ_ONE
-    jr c,_DSKIO_READ_END_POP
+    ld de,(SECBUF)
+    call _DSKIO_TX_ONE
+    jr c,_DSKIO_TX_END_POP
 
-    ;* One sector was read ok
+    jr _DSKIO_TX_STEP_OK
 
-_DSKIO_READ_STEP_OK:
+    ;* Direct transfer
+
+_DSKIO_TX_DIRECT:
+    call _DSKIO_TX_ONE
+    jr c,_DSKIO_TX_END_POP
+
+    ;* One sector was transferred ok
+
+_DSKIO_TX_STEP_OK:
     pop de
     inc d
     inc d   ;Update transfer address (+512 bytes)
 
     pop bc
-    inc c   ;Update total sectors already read count
+    inc c   ;Update total sectors already transferred count
 
     ld h,(ix+4)
     ld l,(ix+5)
@@ -134,14 +162,15 @@ _DSKIO_READ_STEP_OK:
     ld (ix+4),h
     ld (ix+5),l
 
-    djnz _DSKIO_READ_LOOP 
-    jr _DSKIO_READ_END
+    djnz _DSKIO_TX_LOOP 
+    jr _DSKIO_TX_END
 
-_DSKIO_READ_END_POP:
+_DSKIO_TX_END_POP:
     pop hl
     pop bc
-_DSKIO_READ_END:    
+_DSKIO_TX_END:    
     ld b,c
+    res 7,b ;Clear read/write flag
     push af
     pop hl
     ld ix,DSKIO_STACK_SPACE
@@ -151,18 +180,20 @@ _DSKIO_READ_END:
     pop af
     ret
 
-    ;--- Routine for reading one sector
+    ;--- Routine for transferring one sector
     ;    Input:  IX = Command address (with proper sector number and sector count set)
     ;            DE = Transfer address
     ;    Output: On success: Cy = 0
     ;            On error:   Cy = 1, A = DSKIO error code
     ;    Preserves IX
-_DSKIO_READ_ONE:
+_DSKIO_TX_ONE:
     push ix
     pop hl
-    ld bc,512   ;Bytes to transfer
+    ld a,(ix)   ;Command is 28h to read or 2Ah to write
+    rra
+    rra
     ld a,1  ;Retry "media changed"
-    or a    ;Read data
+    ld bc,512   ;Bytes to transfer
 
     push ix
     call USB_EXECUTE_CBI_WITH_RETRY
@@ -173,12 +204,16 @@ _DSKIO_READ_ONE:
     scf
     ret nz   ;Return "other error" on USB error
 
+    ld a,(ix)
+    cp 2Ah
+    jr z,_DSKIO_TX_ONE_2
     ld a,b
     cp 2
     ld a,12
     scf
-    ret nz  ;Return "other error" if no whole sector was transferred
+    ret nz  ;Return "other error" if no whole sector was read
 
+_DSKIO_TX_ONE_2:
     ld a,d
     or a
     ret z   ;Success if ASC = 0
@@ -189,6 +224,9 @@ _DSKIO_READ_ONE:
 
 _UFI_READ_SECTOR_CMD:
     db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
+
+;_UFI_WRITE_SECTOR_CMD:
+;    db 2Ah, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 
 ; -----------------------------------------------------------------------------
@@ -283,7 +321,7 @@ DSKCHG_IMPL:
 
 _DSKCHG_BUILD_DPB:
     xor a
-    call GETDPB
+    call GETDPB_IMPL
     ld b,0FFh
     ret
 
@@ -320,7 +358,7 @@ GETDPB_IMPL:
 	ld   de,0 
 	or   a 
 	ld   c,0FFh 
-	call DSKIO
+	call DSKIO_IMPL
 	pop  iy 
 	pop  hl 
 	jr   c,GETDPBERR
@@ -431,6 +469,3 @@ GETDPBEND:
 	pop  af 
 	xor  a
 	ret
-
-
-

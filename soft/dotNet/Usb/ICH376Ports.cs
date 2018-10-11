@@ -13,5 +13,7 @@
         byte ReadStatus();
 
         byte[] ReadMultipleData(int length);
+
+        void WriteMultipleData(byte[] data);
     }
 }
