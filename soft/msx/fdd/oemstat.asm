@@ -59,12 +59,14 @@ OEM_COMMANDS:
 
 OEMC_USBRESET:
     ld ix,RESET_AND_PRINT_INFO
-    call CALL_BANK_1
+    ld iy,1
+    call CALL_BANK
     jp OEM_END
 
 OEMC_USBERROR:
     ld ix,WK_GET_ERROR
-    call CALL_BANK_1
+    ld iy,1
+    call CALL_BANK
     or a
     jr z,_OEMC_USBERROR_ASC
 

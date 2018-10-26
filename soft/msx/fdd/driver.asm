@@ -55,34 +55,6 @@ SECLEN:		equ	512		; Size of biggest sector
 
 
 ; -----------------------------------------------------------------------------
-; INIHRD_BASIC
-; -----------------------------------------------------------------------------
-; Input:	None
-; Output:	None
-; Changed:	No registers may be affected
-; -----------------------------------------------------------------------------
-	
-INIHRD_BASIC:
-	ret
-	if 0
-	push hl
-	push de
-	push bc
-	push af
-	push ix
-	push iy
-	call INIHRD
-	pop  iy
-	pop  ix
-	pop  af
-	pop  bc
-	pop  de
-	pop  hl
-	ret
-	endif
-
-
-; -----------------------------------------------------------------------------
 ; DRIVES
 ; -----------------------------------------------------------------------------
 ; Input: 	F	Zx set if to return physical drives
@@ -95,8 +67,9 @@ INIHRD_BASIC:
 ; -----------------------------------------------------------------------------
 
 DRIVES:
-	xor  a
 	ld   l,1
+    ret z
+    inc l
 	ret
 
 
@@ -116,28 +89,35 @@ DSKSTP:
 
 DSKIO:
     ld ix,DSKIO_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
 
 DSKCHG:
     ld ix,DSKCHG_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
 
 GETDPB:
     ld ix,GETDPB_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
 
 CHOICE:
     ld ix,CHOICE_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
     
 DSKFMT:
     ld ix,DSKFMT_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
 
 INIHRD:
     ld ix,INIHRD_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK
 
 INIENV:
     ld ix,INIENV_IMPL
-    jp CALL_BANK_1
+    ld iy,1
+    jp CALL_BANK

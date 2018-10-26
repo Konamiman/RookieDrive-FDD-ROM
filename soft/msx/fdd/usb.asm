@@ -110,14 +110,12 @@ USB_INIT_DEV:
 
     ;TODO: Get full device descriptor if HW_IMPL_GET_DEV_DESCR=0
 
-    if 1
     ld l,(ix+8)
     ld h,(ix+9)
     ld (PROCNM),hl
     ld l,(ix+10)
     ld h,(ix+11)
     ld (PROCNM+2),hl
-    endif
 
     ;--- Get configuration descriptor (we'll look at the first configuration only)
 
@@ -158,7 +156,6 @@ _INIT_USB_CHECK_IFACE:
 
     ;* HACK: Check if it's Konamiman's non-standard FDD (VID=0644h, PID=0001h)
 
-    if 1
     ld hl,(PROCNM)
     ld a,l
     cp 44h
@@ -173,7 +170,6 @@ _INIT_USB_CHECK_IFACE:
     ld a,h
     or a
     jr z,_INIT_USB_FOUND_CBI
-    endif
     
 _INIT_USB_CHECK_IFACE_2:
     ld a,(ix+5)
@@ -629,7 +625,7 @@ USB_CLEAR_ENDPOINT_HALT:
 USB_CMD_CLEAR_ENDPOINT_HALT:
     db 2, 1, 0, 0, 255, 0, 0, 0     ;byte 4 is the endpoint to be cleared
 
-;!!!TESTING
+    ;Experiments with endpoint halting
     if 0
 SET_HALT:
     push bc,de,hl,ix,iy
@@ -643,7 +639,6 @@ ENDPOINT_HALTED: equ 81h
 USB_CMD_SET_ENDPOINT_HALT:
     db 2, 3, 0, 0, ENDPOINT_HALTED, 0, 0, 0    
     endif
-;!!!
 
 
 ; -----------------------------------------------------------------------------
@@ -805,7 +800,6 @@ USB_EXECUTE_CBI:
     cp USB_ERR_STALL
     ld de,0 ;ASC+ASCQ in case we return now
     jr nz,_USB_EXE_CBI_END  ;Return on succes or USB error other than stall
-    ;jr _USB_EXE_CBI_END
 
 _USB_EXECUTE_REQUEST_SENSE:
     push bc ;Data actually transferred
@@ -823,6 +817,18 @@ _USB_EXECUTE_REQUEST_SENSE:
     or a    ;receive data
     call _USB_EXECUTE_CBI_CORE
 
+    ;Request sense does not modify the sense status of the device,
+    ;this means that it's going to return the same ASC and ASQ
+    ;of the previous command, therefore we need to ignore them
+    ;and assume success.
+    cp USB_ERR_STALL
+    jr nz,_USB_REQUEST_SENSE_DONE
+    ld a,d
+    or a
+    jr z,_USB_REQUEST_SENSE_DONE    ;Was it a real stall?
+    xor a   ;Assume success
+_USB_REQUEST_SENSE_DONE:
+
     pop ix
     pop bc
     ld d,(ix+12)
@@ -836,8 +842,32 @@ _USB_EXE_CBI_END:
 
     ;Does not retry, nor request sense
     ;In: IX=Prepared ADSC, HL = command, DE=data buffer, BC=data length, Cy=0 to receive
-    ;Out: A=USB error code (STALL if non-zero ASC), BC=data transferred
+    ;Out: A=USB error code (STALL if non-zero ASC), BC=data transferred, D=ASC if STALL (0 if not available)
 _USB_EXECUTE_CBI_CORE:
+    jr c,_USB_EXECUTE_CBI_CORE_NO_CLEAR
+
+    ;When reading data we need to clear HALT on bulk IN endpoint if INT endpoint reports an error (ASC!=0),
+    ;since the bulk IN endpoint could have been stalled after the last data byte was transferred
+    ;(per the CBI specification)
+
+_USB_EXECUTE_CBI_CORE_READ:
+    call _USB_EXECUTE_CBI_CORE_NO_CLEAR
+    cp USB_ERR_STALL
+    ret nz
+
+    ld a,d
+    or a
+    ld a,USB_ERR_STALL
+    ret nz  ;No ASC available: was a stall of control or bulk endpoint (and then it's already cleared)
+
+    push bc
+    ld a,1
+    call USB_CLEAR_ENDPOINT_HALT
+    pop bc
+    ld a,USB_ERR_STALL
+    ret
+
+_USB_EXECUTE_CBI_CORE_NO_CLEAR:
 
     ;>>> STEP 1: Send command
 
@@ -857,6 +887,7 @@ _USB_EXE_CBI_STEP_1:
     pop hl
     pop hl
     ld bc,0
+    ld d,0
     ret
 
     ;>>> STEP 2: Send or receive data
@@ -873,6 +904,7 @@ _USB_EXE_CBI_DATA_IN:
 
     or a
     jr z,_USB_EXE_CBI_STEP_3
+    ld d,0
     ret
 
 _USB_EXE_CBI_DATA_OUT:
@@ -880,6 +912,7 @@ _USB_EXE_CBI_DATA_OUT:
 
     or a
     jr z,_USB_EXE_CBI_STEP_3
+    ld d,0
     ret
 
     ;>>> STEP 3: Get status from INT endpoint
@@ -906,9 +939,9 @@ _USB_EXE_CBI_STEP_3:
 
     ld a,h  ;ASC or ASCQ not zero?
     or l
+    ret z
+    ld d,h
     ld a,USB_ERR_STALL
-    ret nz
-    xor a
     ret
 
 CBI_ADSC:

@@ -6,17 +6,24 @@
     jp (ix)
 
 
-; Call routine in bank 1
-; Input: IX = Routine address, all others: input for the routine
+; Call routine in another bank
+; Input: IX = Routine address, IYl = Bank number, all others: input for the routine
 
-;CALL_BANK_1:
+;CALL_BANK:
+    push hl
+    ld hl,(7FFFh) ;L=Current bank
+    ex (sp),hl
     push af
-    ld a,1
+    ld a,iyl
     ld (6000h),a
     pop af
     call CALL_IX
+    ex (sp),hl  ;L=Previous bank
     push af
-    xor a
+    ld a,l
     ld (6000h),a
     pop af
+    pop hl
     ret
+
+

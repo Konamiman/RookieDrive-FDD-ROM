@@ -30,9 +30,7 @@ INIHRD_IMPL:
 
 INIENV_IMPL:
 
-WAIT_KEY: equ 0
-
-    if WAIT_KEY = 1
+    if WAIT_KEY_ON_INIT = 1
     ld hl,INIHRD_NEXT
     push hl
     endif
@@ -49,30 +47,71 @@ RESET_AND_PRINT_INFO:
     ld hl,NOHARD_S
     jp c,PRINT
 
+    ld b,5
+_HW_RESET_TRY:
+    push bc
     call HW_RESET
+    pop bc
+    jr nc,_HW_RESET_TRY_OK
+    djnz _HW_RESET_TRY
     ld hl,RESERR_S
-    jp c,PRINT
+    jp PRINT
+_HW_RESET_TRY_OK:
     inc a
     ld hl,NODEV_S
     jp z,PRINT
 
+    ;Experiments with hubs, please ignore
+    if 0
+
+    ld a,2
+    call HW_SET_ADDRESS
+    ld a,2
+    ld b,1
+    call HW_SET_CONFIG
+    ld hl,CMD_PORT_POWER
+    ld de,0
+    ld a,2
+    ld b,64
+    call HW_CONTROL_TRANSFER
+    ld hl,CMD_PORT_RESET
+    ld de,0
+    ld a,2
+    ld b,64
+    call HW_CONTROL_TRANSFER
+    jr HUBDONE
+
+CMD_PORT_POWER:
+    db  00100011b, 3, 8, 0, 1, 0, 0, 0
+CMD_PORT_RESET:
+    db  00100011b, 3, 4, 0, 1, 0, 0, 0
+HUBDONE:
+
+    endif
+
+    ld b,5
+_TRY_USB_INIT_DEV:
+    push bc
     call USB_INIT_DEV
-    or a
-    ld hl,YES_CBI_DEV_S
-    push af
-    call z,PRINT
-    pop af
-    jp z,PRINT_DEVICE_INFO
-
-    dec a
-    ld hl,NO_CBI_DEV_S
-    jp z,PRINT
-
-    ld a,b
+    ld h,b
+    pop bc
+    cp 2
+    jr c,_TRY_USB_INIT_DEV_OK
+    djnz _TRY_USB_INIT_DEV
+    ld a,h
     ld hl,DEVERR_S
     jp PRINT_ERROR
+_TRY_USB_INIT_DEV_OK:
 
-    if WAIT_KEY = 1
+    or a
+    ld hl,NO_CBI_DEV_S
+    jp nz,PRINT
+
+    ld hl,YES_CBI_DEV_S
+    call PRINT
+    jp PRINT_DEVICE_INFO
+
+    if WAIT_KEY_ON_INIT = 1
 INIHRD_NEXT:
     jp CHGET
     endif
@@ -93,6 +132,9 @@ PRINT_DEVICE_INFO:
     add hl,sp
     ld sp,hl
 
+    ld b,3  ;Some drives stall on first command after reset so try a few times
+_TRY_INQUIRY:    
+    push bc
     push hl
     pop de
     ld hl,INIQUIRY_CMD
@@ -101,8 +143,12 @@ PRINT_DEVICE_INFO:
     push de
     call USB_EXECUTE_CBI
     pop hl
+    pop bc
     or a
-    jr nz,_PRINT_DEVICE_INFO_ERR
+    jr z,_INQUIRY_OK
+    djnz _TRY_INQUIRY
+    jr _PRINT_DEVICE_INFO_ERR
+_INQUIRY_OK:
 
     ld bc,8
     add hl,bc
@@ -122,6 +168,9 @@ PRINT_DEVICE_INFO:
     add hl,bc
     ld b,4
     call PRINT_SPACE_PADDED_STRING
+
+    ld hl,CRLF_S
+    call PRINT
 
     jr _PRINT_DEVICE_INFO_END
 
@@ -171,7 +220,7 @@ _PSPS_P_LOOP:
 
     ret
 
-
+    ;Disk access experiments
     if 0
 
 READ_SECTOR_0:
@@ -211,6 +260,7 @@ ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10
 	db "(c) Konamiman 2018",13,10
 	db 13,10
+    db "Initializing device...",13
 	db 0
 
 NOHARD_S:
@@ -219,13 +269,13 @@ CRLF_S:
     db 13,10,0
 
 NODEV_S:
-    db  "No USB device found",13,10,0
+    db  "No USB device found",27,"K",13,10,0
 
 NO_CBI_DEV_S:
     db  "USB device found, but it's not a FDD unit",13,10,0
 
 YES_CBI_DEV_S:
-    db  "USB FDD found: ",0    
+    db  "USB FDD found: ",27,"K",0    
 
 RESERR_S:
     db  "ERROR initializing USB host hardware or resetting USB device",13,10,0

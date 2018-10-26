@@ -4,6 +4,10 @@
 ; +1: Bulk IN endpoint parameters
 ; +2: Interrupt IN endpoint parameters
 ; +3: Interface number for the ADSC setup packet
+; +4: Last relative drive accessed
+; +5: Last USB error (for CALL USBERROR)
+; +6: Last ASC (for CALL USBERROR)
+; +7: Last ASCQ (for CALL USBERROR)
 ;
 ; Endpoint parameters are:
 ;   bits 7 and 3-0: Endpoint number
@@ -206,6 +210,22 @@ WK_GET_ERROR:
     ld a,(ix+5)
     ld d,(ix+6)
     ld e,(ix+7)
+    pop ix
+    ret
+
+WK_GET_LAST_REL_DRIVE:
+    push ix
+    call WK_GETWRK
+    ld a,(ix+4)
+    pop ix
+    ret
+
+WK_SET_LAST_REL_DRIVE:
+    push ix
+    push af
+    call WK_GETWRK
+    pop af
+    ld (ix+4),a
     pop ix
     ret
 

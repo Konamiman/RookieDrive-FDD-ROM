@@ -7,9 +7,13 @@
 ; Assemble with:
 ; sjasm rookiefdd.asm rookiefdd.rom
 
-CALL_IX:    equ 7FE0h
-CALL_BANK_1: equ CALL_IX+2
+CALL_XFER_SIZE: equ 20  ;Size of CALL_XFER routine in callbnk.asm
 
+CALL_IX:    equ 7FD0h
+CALL_BANK: equ CALL_IX+2
+
+    include "flags.asm"
+    include "usb_errors.asm"
 
     ;--- Bank 0: MSX-DOS kernel, MSX-DOS driver functions entry points, CALL commands
 
@@ -17,6 +21,7 @@ CALL_BANK_1: equ CALL_IX+2
 
     include "kernel.asm"
     include "driver.asm"
+    include "choice_strings.asm"
     include "oemstat.asm"
 DEFDPB:
     include "defdpb.asm"    
@@ -26,8 +31,8 @@ HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
     ds CALL_IX-$,0FFh
     include "callbnk.asm"
 
-    ds 8000h-$,0FFh
-
+    ds 7FFFh-$,0FFh
+    db 0
 
     ;--- Bank 1: initialization routine, MSX-DOS driver functions implementation and all the USB related code
 
@@ -40,13 +45,15 @@ HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
     include "dskio_dskchg.asm"
     include "choice_dskfmt.asm"    
     include "work_area.asm"
-    include "ch376.asm"
+    include "ch376.asm" ;USB host hardware dependant code
     include "usb.asm"
+    include "ufi.asm"
 DEFDPB_1:
-    include "defdpb.asm"    
+    include "defdpb.asm"
 
     ds CALL_IX-$,0FFh
     include "callbnk.asm"
 
-    ds 8000h-$,0FFh
+    ds 7FFFh-$,0FFh
+    db 1
 

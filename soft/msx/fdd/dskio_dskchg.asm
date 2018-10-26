@@ -29,13 +29,26 @@
 DSKIO_STACK_SPACE: equ 32
 
 DSKIO_IMPL:
+
+CHGCLR: equ 0062h
+INIPLT: equ 0141h
+EXTROM: equ 015Fh
+BEEP:   equ 00C0h
+
+    if DEBUG_DSKIO=1
+    call DO_DEBUG_DSKIO
+    endif
+
+    call CHECK_SAME_DRIVE
+
     push af
-    or a
-    jr z,_DSKIO_OK_UNIT
+    cp 2
+    jr nc,_DSKIO_ERR_PARAM
 
     bit 7,b ;Sanity check: transfer of 64K or more requested?
     jr z,_DSKIO_OK_UNIT
 
+_DSKIO_ERR_PARAM:
     pop af
     ld a,12
     scf
@@ -60,6 +73,15 @@ _DSKIO_OK_UNIT:
     pop hl
     ld a,12
     ret c   ;No device is connected
+
+    push hl
+    push de
+    push bc
+    call TEST_DISK
+    pop bc
+    pop de
+    pop hl
+    ret c
 
     ld ix,-DSKIO_STACK_SPACE
     add ix,sp
@@ -103,6 +125,15 @@ _DSKIO_TX_LOOP:
     push bc
     push de
 
+    ;Jump straight to direct transfer if XFER hook is not installed,
+    ;it's installed when it contains JP <non-zero address>
+    ld a,(XFER)
+    cp 0C3h
+    jr nz,_DSKIO_TX_DIRECT
+    ld a,(XFER+2)
+    or a
+    jr z,_DSKIO_TX_DIRECT
+
     ld a,d
     cp 3Eh
     jr c,_DSKIO_TX_DIRECT
@@ -111,8 +142,9 @@ _DSKIO_TX_LOOP:
 
     ;* Transfer using SECBUF and XFER (transfer address is between 4000h and 7FFFh)
 
-    bit 7,c
-    jr nz,_DSKIO_WRITE_XFER
+    ld a,(ix)   ;Command is 28h to read or 2Ah to write
+    cp 2Ah
+    jr z,_DSKIO_WRITE_XFER
 
 _DSKIO_READ_XFER:
     ld de,(SECBUF)
@@ -123,7 +155,7 @@ _DSKIO_READ_XFER:
     push de
     ld hl,(SECBUF)
     ld bc,512
-    call XFER
+    call CALL_XFER
 
     jr _DSKIO_TX_STEP_OK
 
@@ -132,7 +164,7 @@ _DSKIO_WRITE_XFER:
     push hl
     ld de,(SECBUF)
     ld bc,512
-    call XFER
+    call CALL_XFER
 
     ld de,(SECBUF)
     call _DSKIO_TX_ONE
@@ -225,41 +257,16 @@ _DSKIO_TX_ONE_2:
 _UFI_READ_SECTOR_CMD:
     db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
+CALL_XFER:
+    push ix
+    ld iy,1
+    ld ix,XFER
+    call CALL_BANK
+    pop ix
+    ret
+
 ;_UFI_WRITE_SECTOR_CMD:
 ;    db 2Ah, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
-
-
-; -----------------------------------------------------------------------------
-; ASC_TO_ERR: Convert ASC to DSKIO error
-; -----------------------------------------------------------------------------
-; Input:  A = ASC
-; Output: A = Error
-
-ASC_TO_ERR:
-    call _ASC_TO_ERR
-    ld a,h
-    ret
-
-_ASC_TO_ERR:
-    cp 27h      ;Write protected
-    ld h,0
-    ret z
-    cp 3Ah      ;Not ready
-    ld h,2
-    ret z
-    cp 10h      ;CRC error
-    ld h,4
-    ret z
-    cp 21h      ;Invalid logical block
-    ld h,6
-    ret z
-    cp 02h      ;Seek error
-    ret z
-    cp 03h
-    ld h,10
-    ret z
-    ld h,12     ;Other error
-    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -283,10 +290,12 @@ _ASC_TO_ERR:
 ; -----------------------------------------------------------------------------
 
 DSKCHG_IMPL:
-    or a
+    call CHECK_SAME_DRIVE
+
+    cp 2
     ld a,12
-    scf
-    ret nz
+    ccf
+    ret c
 
     push hl
     call USB_CHECK_DEV_CHANGE
@@ -295,38 +304,59 @@ DSKCHG_IMPL:
     ret c   ;No device is connected
 
     push hl
-    ld hl,READ_0_SECTORS_CMD
-    ld de,0  ;"Discard data" just in case, we won't actually retrieve any data
-    ld bc,0
-    xor a   ;Don't retry "media changed" + Cy=0 (read data)
-    call USB_EXECUTE_CBI_WITH_RETRY
-
+    call TEST_DISK
     pop hl
-    or a
-    ld a,12
-    scf
-    ret nz  ;Return "other error" on USB error
+    ret c
 
-    ld a,d
-    or a
-    ld b,1
-    ret z   ;If no error, media hasn't changed
+    ld a,b
+    dec a   ;Disk unchanged?
+    ret z
 
-    cp 28h  ;ASC for "media changed"
-    jr z,_DSKCHG_BUILD_DPB
-
-    call ASC_TO_ERR
-    scf
-    ret
-
-_DSKCHG_BUILD_DPB:
-    xor a
+    push bc
     call GETDPB_IMPL
-    ld b,0FFh
+    pop bc
+    xor a
     ret
 
-READ_0_SECTORS_CMD:
-    db 28h, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; -----------------------------------------------------------------------------
+; CHECK_SAME_DRIVE
+;
+; If the drive passed in A is not the same that was passed last time,
+; display the "Insert disk for drive X:" message.
+; This is needed for phantom drive emulation.
+; -----------------------------------------------------------------------------
+; Input: 	A	Drive number
+; Preserver AF, BC, DE, HL
+; -----------------------------------------------------------------------------
+
+CHECK_SAME_DRIVE:
+    push hl
+    push de
+    push bc
+    push af
+    
+    cp 2
+    jr nc,_CHECK_SAME_DRIVE_END ;Bad drive number, let the caller handle the error
+
+    call WK_GET_LAST_REL_DRIVE
+    pop bc
+    cp b
+    push bc
+    jr z,_CHECK_SAME_DRIVE_END
+
+    ld a,b
+    call WK_SET_LAST_REL_DRIVE
+    ld ix,PROMPT
+    ld iy,0
+    call CALL_BANK
+
+_CHECK_SAME_DRIVE_END:
+    pop af
+    pop bc
+    pop de
+    pop hl
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -469,3 +499,104 @@ GETDPBEND:
 	pop  af 
 	xor  a
 	ret
+
+
+;Debug DSKIO
+
+    if DEBUG_DSKIO=1
+
+DO_DEBUG_DSKIO:
+    push af
+    push bc
+    push hl
+    push de
+
+    ld ix,INITXT
+    call CALBIOS
+
+    ld a,15
+    ld (0F3E9h),a
+    ld a,1
+    ld (0F3EAh),a
+    ld ix,CHGCLR
+    call CALBIOS
+
+    pop hl  ;Secnum (was DE)
+    push hl
+    call PRINTHEXBIOS_HL
+    call PRINTSPACE
+
+    pop de
+    pop hl
+    push hl     ;Dest address
+    push de
+    call PRINTHEXBIOS_HL
+    call PRINTSPACE
+
+    pop de
+    pop hl
+    pop bc
+    push bc
+    push hl
+    push de
+    ld a,b  ;Sec count
+    call PRINTHEXBIOS
+
+    ld ix,CHGET
+    call CALBIOS
+
+    pop de
+    pop hl
+    pop bc
+    push bc
+    push hl
+    push de
+
+BEEPS:
+    push bc
+    ld ix,BEEP
+    call CALBIOS
+    pop bc
+    djnz BEEPS
+
+    pop de
+    pop hl
+    pop bc
+    pop af
+
+    ret
+
+
+CALBIOS:
+    ld iy,0
+    jp CALSLT
+
+PRINTSPACE:
+    ld a," "
+PRINTBIOS:
+    ld ix,CHPUT
+    jp CALBIOS
+
+PRINTHEXBIOS_HL:
+    ld a,h
+    call PRINTHEXBIOS
+    ld a,l
+PRINTHEXBIOS:
+    push af
+	call	_PRINTHEXBIOS1
+	pop af
+	jr	_PRINTHEXBIOS2
+
+_PRINTHEXBIOS1:	rra
+	rra
+	rra
+	rra
+_PRINTHEXBIOS2:	or	0F0h
+	daa
+	add	a,0A0h
+	adc	a,40h
+
+	call PRINTBIOS
+	ret
+
+    endif

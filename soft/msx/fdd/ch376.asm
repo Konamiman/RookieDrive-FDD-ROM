@@ -3,18 +3,10 @@
 ; To adapt the ROM to use a different USB host controller:
 ;
 ; - Create a new source file
-; - Copy all the USB_ERR_* constants to the new file
+; - Copy the HW_IMPL_* constants and set their values as appropriate
 ; - Implement all the HW_* routines in the new file
-; - Include the new file in rookiefdd.asm, under "USB host controller hardware dependant code"
-
-
-USB_ERR_OK: equ 0
-USB_ERR_NAK: equ 1
-USB_ERR_STALL: equ 2
-USB_ERR_TIMEOUT: equ 3
-USB_ERR_DATA_ERROR: equ 4
-USB_ERR_NO_DEVICE: equ 5
-USB_ERR_OTHER: equ 9
+;   (except those for which HW_IMPL_* is 0)
+; - Include the new file in rookiefdd.asm, replacing the file labeled as "USB host hardware dependant code"
 
 ;--- Routine implementation constants
 ;    HW_IMPL_(routine) needs to be 1 if HW_(routine) is implemented
@@ -33,6 +25,7 @@ CH_COMMAND_PORT: equ 21h
 
 CH_CMD_RESET_ALL: equ 05h
 CH_CMD_CHECK_EXIST: equ 06h
+CH_CMD_SET_RETRY: equ 0Bh
 CH_CMD_DELAY_100US: equ 0Fh
 CH_CMD_SET_USB_ADDR: equ 13h
 CH_CMD_SET_USB_MODE: equ 15h
@@ -104,15 +97,28 @@ _HW_TEST_DO:
 ;         Cy = 1 if reset failed
 
 HW_RESET:
+
+    ;Clear the CH376 data buffer in case a reset was made
+    ;while it was in the middle of a data transfer operation
+    ;ld b,64
+_HW_RESET_CLEAR_DATA_BUF:
+    in a,(CH_DATA_PORT)
+    djnz _HW_RESET_CLEAR_DATA_BUF
+
     ld a,CH_CMD_RESET_ALL
     out (CH_COMMAND_PORT),a
 
+    if USING_ARDUINO_BOARD=1
     ld bc,1000
-_HW_RESET_WAIT:     ;Wait for reset to complete, theorically 35ms
+_HW_RESET_WAIT:
     dec bc
     ld a,b
     or c
     jr nz,_HW_RESET_WAIT
+    else
+    ld bc,350
+    call CH_DELAY
+    endif
 
     call CH_DO_SET_NOSOF_MODE
     ret c
@@ -279,15 +285,6 @@ _CH_DATA_IN_LOOP:
     call CH_WAIT_INT_AND_GET_RESULT
     or a
     jr nz,_CH_DATA_IN_ERR   ;DONE if error
-
-    if 0
-    ex (sp),hl
-    ld a,h
-    or l
-    ld c,0
-    jr z,_CH_DATA_IN_NO_MORE_DATA
-    ex (sp),hl
-    endif
 
     call CH_READ_DATA
     ld b,0
@@ -539,10 +536,33 @@ CH_DO_BUS_RESET:
     ld a,1
     ret c
 
+    if USING_ARDUINO_BOARD = 0
+    ld bc,150
+    call CH_DELAY
+    endif
+
     ld a,6
     call CH_SET_USB_MODE
 
     ld a,1
+    ret c
+
+    xor a
+    inc a
+    ret
+
+    ;Input: BC = Delay duration in units of 0.1ms
+CH_DELAY:
+    ld a,CH_CMD_DELAY_100US
+    out (CH_COMMAND_PORT),a
+_CH_DELAY_LOOP:
+    in a,(CH_DATA_PORT)
+    or a
+    jr z,_CH_DELAY_LOOP 
+    dec bc
+    ld a,b
+    or c
+    jr nz,CH_DELAY
     ret
 
 
@@ -566,9 +586,28 @@ CH_SET_USB_MODE:
 _CH_WAIT_USB_MODE:
     in a,(CH_DATA_PORT)
     cp CH_ST_RET_SUCCESS
-    ret z
+    jp z,CH_CONFIGURE_RETRIES
     djnz _CH_WAIT_USB_MODE
     scf
+    ret
+
+
+CH_CONFIGURE_RETRIES:
+    push af
+    ld a,CH_CMD_SET_RETRY
+    out (CH_COMMAND_PORT),a
+    ld a,25h    ;Fixed value, required by CH376
+    out (CH_DATA_PORT),a
+
+    ;Bits 7 and 6:
+    ;  0x: Don't retry NAKs
+    ;  10: Retry NAKs indefinitely (default)
+    ;  11: Retry NAKs for 3s
+    ;Bits 5-0: Number of retries after device timeout
+    ;Default after reset and SET_USB_MODE is 8Fh
+    ld a,0FFh 
+    out (CH_DATA_PORT),a
+    pop af
     ret
 
 
