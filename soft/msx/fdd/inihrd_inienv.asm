@@ -141,7 +141,7 @@ _TRY_INQUIRY:
     ld bc,36
     or a
     push de
-    call USB_EXECUTE_CBI
+    call USB_EXECUTE_CBI_WITH_RETRY
     pop hl
     pop bc
     or a
@@ -219,42 +219,6 @@ _PSPS_P_LOOP:
     djnz _PSPS_P_LOOP
 
     ret
-
-    ;Disk access experiments
-    if 0
-
-READ_SECTOR_0:
-    ld hl,8000h
-    ld de,8000h+1
-    ld bc,4000h-1
-    ld (hl),0ffh
-    ldir
-
-    xor a
-    ld b,32
-    ld de,0
-    ld hl,8000h
-    call DSKIO
-    ret
-
-    xor a
-    ld hl,9000h
-    call DSKCHG
-
-DO_READ_SECTOR_CMD:
-    ld hl,READ_SECTOR_0_CMD
-    ld de,9000h
-    ld bc,512
-    ld a,1
-    or a
-    call USB_EXECUTE_CBI_WITH_RETRY
-    jr READ_SECTOR_0
-
-READ_SECTOR_0_CMD:
-    db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
-
-    endif
-
   
 ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10

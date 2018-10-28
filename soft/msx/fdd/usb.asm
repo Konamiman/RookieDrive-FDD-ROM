@@ -684,6 +684,16 @@ USB_EXECUTE_CBI_WITH_RETRY:
     pop de
     pop bc
     pop af
+    cp USB_ERR_NAK
+    ret nz
+
+    ;On NAK, reset device
+    push de
+    call HW_BUS_RESET
+    call USB_INIT_DEV
+    pop de
+    ld bc,0
+    ld a,USB_ERR_NAK
     ret
 
 _USB_EXECUTE_CBI_WITH_RETRY:
@@ -901,7 +911,7 @@ _USB_EXE_CBI_STEP_2:
 _USB_EXE_CBI_DATA_IN:
     or a    ;From bulk endpoint
     call USB_DATA_IN_TRANSFER
-
+    
     or a
     jr z,_USB_EXE_CBI_STEP_3
     ld d,0

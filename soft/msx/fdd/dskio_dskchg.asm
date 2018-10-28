@@ -108,39 +108,100 @@ _DSKIO_OK_CMD:
     ld (ix+5),e
     pop de      ;DE = Transfer address
 
-    ;* Sector transfer loop. 
-    ;  We read/write sectors one by one always, because some FDD units
-    ;  choke when requested too many sectors at the same time
-    ;  and become unresponsive until they are reset.
-    ;
     ;  At this point:
-    ;  IX = Read or write sector command, with the proper sector number
+    ;  IX = Read or write sector command, with the proper sector number and count=1
     ;  DE = Transfer address
     ;  B  = Sector count
 
-    ld a,c
-    and 80h
-    ld c,a  ;Count of sectors transferred so far (bit 7 is still 0 to read or 1 to write)
-_DSKIO_TX_LOOP:
+    ;* Check if we can transfer sectors directly or we need to transfer one by one.
+    ;* We'll start with one by one transfer if page 1 is involved in the transfer.
+
+    bit 7,d
+    jr nz,_DSKIO_SINGLE_TRANSFER    ;Transfer starts at >= 8000h
+    push de
+    push bc
+    ex de,hl
+    sla b
+    ld c,0  ;BC = Sectors * 512
+    add hl,bc
+    dec hl  ;Now HL = Last transfer address
+    pop bc
+    pop de
+    ld a,h
+    cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
+    jr nc,_DSKIO_ONE_BY_ONE
+
+    ;>>> Direct transfer
+    ;    We transfer sectors directly from/to the source/target address,
+    ;    in 16 sector chunks (some device NAK or fail on larger transfers)
+
+_DSKIO_SINGLE_TRANSFER:
+    ld c,0 
+_DSKIO_SINGLE_TRANSFER_LOOP:
+    ;Here IX=Read/write command, DE=Transfer address, B=Sectors remaining, C=Sectors transferred so far
+
+    ld a,b
+    or a
+    jp z,_DSKIO_TX_END    ;Terminate if no more sectors to transfer
+    cp 16
+    jr c,_DSKIO_SINGLE_TRANSFER_OK_COUNT
+    ld a,16
+_DSKIO_SINGLE_TRANSFER_OK_COUNT:
+    ld (ix+8),a     ;Set sector count on command
     push bc
     push de
+    call _DSKIO_TX_ONE
 
-    ;Jump straight to direct transfer if XFER hook is not installed,
-    ;it's installed when it contains JP <non-zero address>
-    ld a,(XFER)
-    cp 0C3h
-    jr nz,_DSKIO_TX_DIRECT
-    ld a,(XFER+2)
-    or a
-    jr z,_DSKIO_TX_DIRECT
+    pop hl
+    push af
+    ld c,0      ;XXYYh bytes trasferred, round to XX00h
+    add hl,bc   ;Update transfer address
+    ex de,hl
+    ld h,b
+    srl h   ;H=transferred sectors
+    pop af
 
-    ld a,d
-    cp 3Eh
-    jr c,_DSKIO_TX_DIRECT
-    and 80h
-    jr nz,_DSKIO_TX_DIRECT
+    pop bc
+    push af
+    ld a,c
+    add h
+    ld c,a  ;Update sectors transferred so far
+    ld a,b
+    sub h
+    ld b,a  ;Update remaining sectors
 
-    ;* Transfer using SECBUF and XFER (transfer address is between 4000h and 7FFFh)
+    push hl
+    push bc
+    ld c,h
+    ld b,0
+    ld h,(ix+4)
+    ld l,(ix+5)
+    add hl,bc     ;Update sector number
+    ld (ix+4),h
+    ld (ix+5),l
+    pop bc
+    pop hl
+    pop af
+
+    jr c,_DSKIO_TX_END  ;Terminate on error
+    ld a,h
+    cp 16
+    ccf
+    jr nc,_DSKIO_TX_END ;Terminate if <16 sectors transferred
+    jr _DSKIO_SINGLE_TRANSFER_LOOP
+
+    ;>>> One by one sector transfer, using SECBUF and XFER
+
+_DSKIO_ONE_BY_ONE:
+    ld c,0
+_DSKIO_TX_LOOP:
+    ;Here IX=Read/write command, DE=Transfer address, B=Sectors remaining, C=Sectors transferred so far
+
+    bit 7,d ;Switch to direct transfer is source/target address becomes >=8000h
+    jr nz,_DSKIO_SINGLE_TRANSFER_LOOP
+
+    push bc
+    push de
 
     ld a,(ix)   ;Command is 28h to read or 2Ah to write
     cp 2Ah
@@ -172,12 +233,6 @@ _DSKIO_WRITE_XFER:
 
     jr _DSKIO_TX_STEP_OK
 
-    ;* Direct transfer
-
-_DSKIO_TX_DIRECT:
-    call _DSKIO_TX_ONE
-    jr c,_DSKIO_TX_END_POP
-
     ;* One sector was transferred ok
 
 _DSKIO_TX_STEP_OK:
@@ -200,9 +255,9 @@ _DSKIO_TX_STEP_OK:
 _DSKIO_TX_END_POP:
     pop hl
     pop bc
-_DSKIO_TX_END:    
+_DSKIO_TX_END:
     ld b,c
-    res 7,b ;Clear read/write flag
+_DSKIO_TX_END_2:    
     push af
     pop hl
     ld ix,DSKIO_STACK_SPACE
@@ -217,15 +272,18 @@ _DSKIO_TX_END:
     ;            DE = Transfer address
     ;    Output: On success: Cy = 0
     ;            On error:   Cy = 1, A = DSKIO error code
+    ;            BC = Amount of bytes transferred
     ;    Preserves IX
 _DSKIO_TX_ONE:
     push ix
     pop hl
+    ld b,(ix+8)
+    sla b
+    ld c,0  ;BC = Bytes to transfer
     ld a,(ix)   ;Command is 28h to read or 2Ah to write
     rra
-    rra
+    rra     ;Now Cy=0 to read or 1 to write
     ld a,1  ;Retry "media changed"
-    ld bc,512   ;Bytes to transfer
 
     push ix
     call USB_EXECUTE_CBI_WITH_RETRY
@@ -242,8 +300,7 @@ _DSKIO_TX_ONE:
     ld a,b
     cp 2
     ld a,12
-    scf
-    ret nz  ;Return "other error" if no whole sector was read
+    ret c  ;Return "other error" if no whole sector was read
 
 _DSKIO_TX_ONE_2:
     ld a,d
@@ -259,7 +316,7 @@ _UFI_READ_SECTOR_CMD:
 
 CALL_XFER:
     push ix
-    ld iy,1
+    ld iy,0
     ld ix,XFER
     call CALL_BANK
     pop ix

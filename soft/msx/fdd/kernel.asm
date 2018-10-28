@@ -4302,35 +4302,19 @@ T570D:	defw	A40A7,A5445,A53A7,A546E,A5474,A5465,A5454,A5462
 	defw	A47D1,A56D0,A553C,A5552,A55DB,A55E6,A55FF,A46BA
 	defw	A4720
 
-A576F:	call	INIHRD			; initialize diskhardware
-	di
-	ld	a,(DEVICE)
-	and	a			; abort disksystem init ?
-	ret	m			; yep, quit
-	jp	nz,A580C		; disksystem init already started by an other diskrom, skip init
-	ld	hl,HOKVLD
-	bit	0,(hl)			; EXTBIO hook valid ?
-	jr	nz,A578E
-	set	0,(hl)
-	ld	hl,EXTBIO
-	ld	b,3*5
-A5789:	ld	(hl),0C9H
-	inc	hl
-	djnz	A5789			; nop, init EXTBIO,DISINT and ENAINT hooks
-A578E:	ld	hl,(BOTTOM)
-	ld	de,0C001H
-	rst	020H			; at least 16Kb RAM ?
-	jr	nc,A57A3		; nop, abort
-	ld	a,006H
-	call	SNSMAT
-	di
-	rrca				; SHIFT key pressed ?
-	jr	c,A57A9			; nop, cont
+A576F:
+    call DO_CHECK_CAN_INIT
+    or a
+    jp z,A580C
+    dec a
+    jr z,A57A9
+    dec a
+    ret z
 	ld	a,007H
 	rst	018H			; beep
-A57A3:	ld	a,0FFH
-	ld	(DEVICE),a		; flag abort disksystem init
-	ret
+    ret    
+
+    ds 57A9h-$,0FFh
 
 ;	Subroutine	Initialize disksystem, first diskrom
 
@@ -4472,9 +4456,10 @@ A587E:	ld	(hl),e
 	dec	a
 	jr	nz,A587E		; next drive
 	call	INIENV			; initialize driver workarea
-	ld	hl,DEVICE
-	inc	(hl)			; increase diskdriver count
-	ret
+
+    jp DO_SET_DEVICE
+
+    ds 5897h-$,0FFh
 
 ;	Subroutine	H.RUNC interceptor
 ;	Inputs		-
@@ -4487,11 +4472,12 @@ A5897:	ld	hl,H.RUNC
 A589C:	ld	(hl),0C9H
 	inc	hl
 	djnz	A589C			; clear RUNC hook
-	ld	hl,DEVICE
-	xor	a
-	cp	(hl)
-	ld	(hl),a			; clear diskinterface count
-	ret	p			; already cleared, return control
+
+    call DO_RUNC_INTERCEPTOR
+    ret c
+
+    ds 58A8h-$,0FFh
+
 A58A8:	call	A622D			; hook H.LOPD when H.CLEA is hooked (for register system bottom)
 	ld	(YF348),a		; disksystem diskrom slotid
 	ld	hl,A7397
@@ -5528,7 +5514,7 @@ A5FF6:	ld	a,(H.TIMI+0)
 	cp	0C9H
 	jr	z,A6012			; H.TIMI not hooked, skip saving H.TIMI
 	push	hl
-	ld	a,(DEVICE)		; this diskdriver number
+	call    GET_DEVICE_FOR_INT  ;ld	a,(DEVICE)		; this diskdriver number
 	ld	hl,YFB29
 	call	A5FF1
 	add	hl,bc
@@ -8633,9 +8619,127 @@ A7397:	call	XF36B			; enable ram on page 1
 
 	defb	31,28,31,30,31,30,31,31,30,31,30,31
 
+
+    ;--------------------------------
+    ;------   New/moved code   ------
+    ;--------------------------------
+
+    ;The code here is the original code but patched to allow us to become the only disk driver when SHIFT is pressed
+    ;(or, if DISABLE_OTHERS_BY_DEFAULT, when GRAPH is not pressed).
+    ;Inspired by the "hostile takeover" mode in https://github.com/joyrex2001/dsk2rom
+
     if INVERT_CTRL_KEY
 SNSMAT_AND_INVERT_CTRL:
     call SNSMAT
     xor 2
     ret
     endif
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: A= 0 to skip init (disksystem init already started by an other diskrom )
+    ;        1 to continue init
+    ;        2 to abort init
+    ;        3 to abort init (and beep)
+
+DO_CHECK_CAN_INIT:
+	call	INIHRD			; initialize diskhardware
+    call MUST_DISABLE_OTHERS
+    jr nc,_DO_CHECK_CAN_INIT_2
+
+   	xor     a
+	ld      (DEVICE),a
+	ld      (HOKVLD),a
+    jr       _DO_CHECK_CAN_INIT_3
+
+_DO_CHECK_CAN_INIT_2:
+	di
+	ld	a,(DEVICE)
+	and	a			; abort disksystem init ?
+	ld a,2
+    ret	m			; yep, quit
+    ld a,0
+	ret nz 	; disksystem init already started by an other diskrom, skip init
+
+_DO_CHECK_CAN_INIT_3:
+	ld	hl,HOKVLD
+	bit	0,(hl)			; EXTBIO hook valid ?
+	jr	nz,A578E
+	set	0,(hl)
+	ld	hl,EXTBIO
+	ld	b,3*5
+A5789:	ld	(hl),0C9H
+	inc	hl
+	djnz	A5789			; nop, init EXTBIO,DISINT and ENAINT hooks
+A578E:	ld	hl,(BOTTOM)
+	ld	de,0C001H
+	rst	020H			; at least 16Kb RAM ?
+    ld a,3
+    ret nc  	; nop, abort
+	ld a,1
+    ret
+
+    ;------------------------------------------------------------------------------
+
+DO_SET_DEVICE:
+    call MUST_DISABLE_OTHERS
+    jr nc,_DO_SET_DEVICE_2
+
+	ld      a,129
+	ld      (DEVICE),a
+	ret
+
+_DO_SET_DEVICE_2:
+	ld	hl,DEVICE
+	inc	(hl)			; increase diskdriver count
+	ret
+
+    ;------------------------------------------------------------------------------
+
+GET_DEVICE_FOR_INT:
+    call MUST_DISABLE_OTHERS
+    ld a,1
+    ret c
+    ld a,(DEVICE)
+    ret
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: Cy=1 to return to caller immediately
+
+DO_RUNC_INTERCEPTOR:
+    call MUST_DISABLE_OTHERS
+    jr c,_DO_RUNC_INTERCEPTOR_2
+
+    ld	hl,DEVICE
+	xor	a
+	cp	(hl)
+	ld	(hl),a			; clear diskinterface count
+    scf
+	ret	p			; already cleared, return control
+    or a
+    ret
+
+_DO_RUNC_INTERCEPTOR_2:
+	xor	a
+	ld	hl,DEVICE
+	ld	(hl),a
+    or a
+    ret
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: Cy=1 if other drivers need to be disabled
+
+MUST_DISABLE_OTHERS:
+    ld a,6
+    call	SNSMAT
+	di
+	rrca
+    if DISABLE_OTHERS_BY_DEFAULT    ;...then return Cy=1 if GRAPH is NOT pressed
+    rrca
+    rrca
+    else                            ;...then return Cy=1 if SHIFT is pressed
+    ccf
+    endif
+    ret

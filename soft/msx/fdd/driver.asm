@@ -121,3 +121,54 @@ INIENV:
     ld ix,INIENV_IMPL
     ld iy,1
     jp CALL_BANK
+
+
+
+    ;Disk access experiments
+    if 0
+
+READ_SECTOR_0:
+    ld hl,8000h
+    ld de,8000h+1
+    ld bc,4000h-1
+    ld (hl),0ffh
+    ldir
+
+    xor a
+    ld b,32
+    ld de,0
+    ld hl,8000h
+    call DSKIO
+    ret
+
+    xor a
+    ld hl,9000h
+    call DSKCHG
+
+    ds 7500h-$,0FFh
+
+DO_READ_SECTOR_CMD:
+    ld b,80
+    push bc
+    ld hl,READ_SECTOR_0_CMD
+    ld de,0C000h
+    ld bc,12
+    ldir
+    pop bc
+    ld a,b
+    ld (0C008h),a
+    sla b
+    ld c,0
+    ld hl,0C000h
+    ld de,2000h
+    ld a,1
+    or a
+    ld ix,USB_EXECUTE_CBI_WITH_RETRY
+    ld iy,1
+    call CALL_BANK
+    jr DO_READ_SECTOR_CMD
+
+READ_SECTOR_0_CMD:
+    db 28h, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
+
+    endif

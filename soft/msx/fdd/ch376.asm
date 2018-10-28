@@ -30,6 +30,7 @@ CH_CMD_DELAY_100US: equ 0Fh
 CH_CMD_SET_USB_ADDR: equ 13h
 CH_CMD_SET_USB_MODE: equ 15h
 CH_CMD_TEST_CONNECT: equ 16h
+CH_CMD_ABORT_NAK: equ 17h
 CH_CMD_GET_STATUS: equ 22h
 CH_CMD_RD_USB_DATA0: equ 27h
 CH_CMD_WR_HOST_DATA: equ 2Ch
@@ -133,7 +134,7 @@ _CH_WAIT_TEST_CONNECT:
     ld a,-1
     ret z
 
-    jp CH_DO_BUS_RESET
+    jp HW_BUS_RESET
 
 
 ; -----------------------------------------------------------------------------
@@ -158,7 +159,7 @@ HW_DEV_CHANGE:
     
     call CH_GET_STATUS
     cp CH_ST_INT_CONNECT
-    jp z,CH_DO_BUS_RESET
+    jp z,HW_BUS_RESET
     cp CH_ST_INT_DISCONNECT
     jp z,CH_DO_SET_NOSOF_MODE
 
@@ -451,6 +452,12 @@ _CH_WAIT_WHILE_BUSY_LOOP:
 ; Output: A = Result of GET_STATUS (one of USB_ERR_*)
 
 CH_WAIT_INT_AND_GET_RESULT:
+    if USING_ARDUINO_BOARD=1
+    ld bc,500
+    else
+    ld bc,60000
+    endif
+
     call CH_CHECK_INT_IS_ACTIVE
     jr nz,CH_WAIT_INT_AND_GET_RESULT    ;TODO: Perhaps add a timeout check here?
 
@@ -523,14 +530,14 @@ CH_DO_SET_NOSOF_MODE:
 
 
 ; --------------------------------------
-; CH_DO_BUS_RESET: Performs a USB bus reset, then sets USB host mode with SOF
+; HW_BUS_RESET: Performs a USB bus reset, then sets USB host mode with SOF
 ;
 ; This needs to run when a device connection is detected
 ;
 ; Output: A  = 1
 ;         Cy = 1 on error
 
-CH_DO_BUS_RESET:
+HW_BUS_RESET:
     ld a,7
     call CH_SET_USB_MODE
     ld a,1
