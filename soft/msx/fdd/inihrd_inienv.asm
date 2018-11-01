@@ -139,6 +139,7 @@ _TRY_INQUIRY:
     pop de
     ld hl,INIQUIRY_CMD
     ld bc,36
+    ld a,1
     or a
     push de
     call USB_EXECUTE_CBI_WITH_RETRY

@@ -64,6 +64,7 @@ WK_ZERO:
     ld (ix),0
     ld (ix+1),0
     ld (ix+2),0
+    ld (ix+3),0
     ld (ix+5),0
     ld (ix+6),0
     ld (ix+7),0

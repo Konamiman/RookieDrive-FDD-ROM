@@ -118,6 +118,8 @@ _DSKIO_OK_CMD:
 
     bit 7,d
     jr nz,_DSKIO_SINGLE_TRANSFER    ;Transfer starts at >= 8000h
+    bit 6,d
+    jr nz,_DSKIO_ONE_BY_ONE
     push de
     push bc
     ex de,hl
@@ -151,18 +153,30 @@ _DSKIO_SINGLE_TRANSFER_OK_COUNT:
     push bc
     push de
     call _DSKIO_TX_ONE
+    pop hl  ;transfer address
+    jr nc,_DSKIO_SINGLE_TRANSFER_OK_BLOCK
 
-    pop hl
+    ;Transfer error: just update transferred sectors count and terminate
+    srl b   ;B=transferred sectors (will always be 0 on write, that's ok)
+    pop hl  ;L=Sectors transferred so far
     push af
-    ld c,0      ;XXYYh bytes trasferred, round to XX00h
+    ld a,l
+    add b
+    ld c,a
+    pop af
+    scf
+    jr _DSKIO_TX_END
+
+_DSKIO_SINGLE_TRANSFER_OK_BLOCK:
+    ld b,(ix+8) ;Transfer length in sectors
+    sla b
+    ld c,0      ;BC = transfer length in bytes
     add hl,bc   ;Update transfer address
     ex de,hl
     ld h,b
-    srl h   ;H=transferred sectors
-    pop af
+    srl h   ;H=transfer length in sectors
 
     pop bc
-    push af
     ld a,c
     add h
     ld c,a  ;Update sectors transferred so far
@@ -181,13 +195,7 @@ _DSKIO_SINGLE_TRANSFER_OK_COUNT:
     ld (ix+5),l
     pop bc
     pop hl
-    pop af
 
-    jr c,_DSKIO_TX_END  ;Terminate on error
-    ld a,h
-    cp 16
-    ccf
-    jr nc,_DSKIO_TX_END ;Terminate if <16 sectors transferred
     jr _DSKIO_SINGLE_TRANSFER_LOOP
 
     ;>>> One by one sector transfer, using SECBUF and XFER
@@ -197,7 +205,7 @@ _DSKIO_ONE_BY_ONE:
 _DSKIO_TX_LOOP:
     ;Here IX=Read/write command, DE=Transfer address, B=Sectors remaining, C=Sectors transferred so far
 
-    bit 7,d ;Switch to direct transfer is source/target address becomes >=8000h
+    bit 7,d ;Switch to direct transfer if source/target address becomes >=8000h
     jr nz,_DSKIO_SINGLE_TRANSFER_LOOP
 
     push bc
@@ -307,12 +315,13 @@ _DSKIO_TX_ONE_2:
     or a
     ret z   ;Success if ASC = 0
 
-    call ASC_TO_ERR
-    scf
-    ret
+    jp ASC_TO_ERR
 
 _UFI_READ_SECTOR_CMD:
     db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
+
+;_UFI_WRITE_SECTOR_CMD:
+;    db 2Ah, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 CALL_XFER:
     push ix
@@ -321,9 +330,6 @@ CALL_XFER:
     call CALL_BANK
     pop ix
     ret
-
-;_UFI_WRITE_SECTOR_CMD:
-;    db 2Ah, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 
 ; -----------------------------------------------------------------------------
@@ -373,46 +379,6 @@ DSKCHG_IMPL:
     call GETDPB_IMPL
     pop bc
     xor a
-    ret
-
-
-; -----------------------------------------------------------------------------
-; CHECK_SAME_DRIVE
-;
-; If the drive passed in A is not the same that was passed last time,
-; display the "Insert disk for drive X:" message.
-; This is needed for phantom drive emulation.
-; -----------------------------------------------------------------------------
-; Input: 	A	Drive number
-; Preserver AF, BC, DE, HL
-; -----------------------------------------------------------------------------
-
-CHECK_SAME_DRIVE:
-    push hl
-    push de
-    push bc
-    push af
-    
-    cp 2
-    jr nc,_CHECK_SAME_DRIVE_END ;Bad drive number, let the caller handle the error
-
-    call WK_GET_LAST_REL_DRIVE
-    pop bc
-    cp b
-    push bc
-    jr z,_CHECK_SAME_DRIVE_END
-
-    ld a,b
-    call WK_SET_LAST_REL_DRIVE
-    ld ix,PROMPT
-    ld iy,0
-    call CALL_BANK
-
-_CHECK_SAME_DRIVE_END:
-    pop af
-    pop bc
-    pop de
-    pop hl
     ret
 
 

@@ -172,6 +172,7 @@ RAWFLG	equ	0F30DH			; read after write (verify) flag
 YF30E	equ	0F30EH			; date format (0 japanese, 1 european, 2 american)
 YF30F	equ	0F30FH			; double byte header char table
 					; looks like F313-F322 are unused
+DOSVER: equ 0F313H          ; 0 for DOS 1, <>0 for DOS 2
 YF323	equ	0F323H			; diskerror handler pointer
 YF325	equ	0F325H			; abort handler pointer
 XF327	equ	0F327H			; AUX input hook (MSXHOOK style), default returns CTRL-Z in register A

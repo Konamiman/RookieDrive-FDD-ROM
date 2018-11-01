@@ -106,3 +106,59 @@ TRY_TEST:
 
 _UFI_TEST_UNIT_READY_CMD:
     db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+; -----------------------------------------------------------------------------
+; CHECK_SAME_DRIVE
+;
+; If the drive passed in A is not the same that was passed last time,
+; display the "Insert disk for drive X:" message.
+; This is needed for phantom drive emulation.
+; -----------------------------------------------------------------------------
+; Input: 	A	Drive number
+; Preserves AF, BC, DE, HL
+; -----------------------------------------------------------------------------
+
+CHECK_SAME_DRIVE:
+    push hl
+    push de
+    push bc
+    push af
+    
+    cp 2
+    jr nc,_CHECK_SAME_DRIVE_END ;Bad drive number, let the caller handle the error
+
+    call WK_GET_LAST_REL_DRIVE
+    pop bc
+    cp b
+    push bc
+    jr z,_CHECK_SAME_DRIVE_END
+
+    ld a,b
+    call WK_SET_LAST_REL_DRIVE
+    ld ix,PROMPT
+    ld iy,0
+    call CALL_BANK
+
+_CHECK_SAME_DRIVE_END:
+    pop af
+    pop bc
+    pop de
+    pop hl
+    ret
+
+
+DO_SNSMAT:
+    ld c,a
+    di
+    in a,(0AAh)
+    and 0F0h
+    add c
+    out (0AAh),a
+    ei
+    in a,(0A9h)
+    ret
+
+    ;row 6  F3     F2       F1  CODE    CAPS  GRAPH  CTRL   SHIFT
+    ;row 7	RET	   SELECT	BS	STOP	TAB	  ESC    F5    F4
+    ;row 8	right  down     up  left    DEL   INS    HOME  SPACE

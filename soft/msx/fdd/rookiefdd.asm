@@ -41,11 +41,11 @@ HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
 
     org 4000h
 
+    include "ch376.asm" ;USB host hardware dependant code
     include "inihrd_inienv.asm"
     include "dskio_dskchg.asm"
     include "choice_dskfmt.asm"    
     include "work_area.asm"
-    include "ch376.asm" ;USB host hardware dependant code
     include "usb.asm"
     include "ufi.asm"
 DEFDPB_1:

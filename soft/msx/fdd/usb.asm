@@ -644,25 +644,35 @@ USB_CMD_SET_ENDPOINT_HALT:
 ; -----------------------------------------------------------------------------
 ; USB_PROCESS_ERROR
 ;
-; If USB error is "device disconnected", clear work area
+; If USB error is "device disconnected", clear work area.
+; Otherwise, if it's not STALL, reset device.
 ; -----------------------------------------------------------------------------
 ; Does not modify registers
 
 USB_PROCESS_ERROR:
-    push af
-    cp USB_ERR_NO_DEVICE
-    jr nz,_USB_PROCESS_ERROR_END
-
     push bc
     push de
     push hl
-    call WK_ZERO
+    push af
+    ld hl,_USB_PROCESS_ERROR_END
+    push hl
+    cp USB_ERR_NO_DEVICE
+    jp z,WK_ZERO
+    cp USB_ERR_STALL
+    jr nz,_USB_PROCESS_ERROR_RESET
+    pop hl
+_USB_PROCESS_ERROR_END:
+    pop af
+    call WK_SET_ERROR
     pop hl
     pop de
     pop bc
-_USB_PROCESS_ERROR_END:
-    pop af
-    ret    
+    ret
+
+_USB_PROCESS_ERROR_RESET:
+    call HW_BUS_RESET
+    call USB_INIT_DEV
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -677,23 +687,14 @@ _USB_PROCESS_ERROR_END:
 
 USB_EXECUTE_CBI_WITH_RETRY:
     call _USB_EXECUTE_CBI_WITH_RETRY
-    push af
+    or a
+    ret nz  ;USB error will already have been logged by USB_PROCESS_ERROR
     push bc
     push de
     call WK_SET_ERROR
     pop de
     pop bc
-    pop af
-    cp USB_ERR_NAK
-    ret nz
-
-    ;On NAK, reset device
-    push de
-    call HW_BUS_RESET
-    call USB_INIT_DEV
-    pop de
-    ld bc,0
-    ld a,USB_ERR_NAK
+    xor a
     ret
 
 _USB_EXECUTE_CBI_WITH_RETRY:

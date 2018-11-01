@@ -15,6 +15,7 @@ HW_IMPL_GET_DEV_DESCR: equ 1
 HW_IMPL_GET_CONFIG_DESCR: equ 1
 HW_IMPL_SET_CONFIG: equ 1
 HW_IMPL_SET_ADDRESS: equ 1
+HW_IMPL_CONFIGURE_NAK_RETRY: equ 1
 
 ;--- CH376 port to Z80 ports mapping
 
@@ -452,10 +453,10 @@ _CH_WAIT_WHILE_BUSY_LOOP:
 ; Output: A = Result of GET_STATUS (one of USB_ERR_*)
 
 CH_WAIT_INT_AND_GET_RESULT:
-    if USING_ARDUINO_BOARD=1
-    ld bc,500
-    else
-    ld bc,60000
+    if IMPLEMENT_PANIC_BUTTON=1
+    call PANIC_KEYS_PRESSED
+    ld a,USB_ERR_PANIC_BUTTON_PRESSED
+    ret z
     endif
 
     call CH_CHECK_INT_IS_ACTIVE
@@ -477,7 +478,7 @@ CH_WAIT_INT_AND_GET_RESULT:
     and 2Fh
 
     cp 2Ah
-    ld b,USB_ERR_NAK    ;Should never occur as the CH376 retries NAKs forever
+    ld b,USB_ERR_NAK
     jr z,_CH_LD_A_B_RET
     cp 2Eh
     ld b,USB_ERR_STALL
@@ -489,7 +490,7 @@ CH_WAIT_INT_AND_GET_RESULT:
     ld b,USB_ERR_TIMEOUT
     jr z,_CH_LD_A_B_RET
 
-    ld b,USB_ERR_OTHER
+    ld b,USB_ERR_UNEXPECTED_STATUS_FROM_HOST
 
 _CH_LD_A_B_RET:
     ld a,b
@@ -499,6 +500,23 @@ _CH_NO_DEV_ERR:
     call CH_DO_SET_NOSOF_MODE
     ld a,USB_ERR_NO_DEVICE
     ret
+
+
+    if IMPLEMENT_PANIC_BUTTON=1
+
+    ;Return Z=1 if CAPS+ESC is pressed
+PANIC_KEYS_PRESSED:
+    ld a,6
+    call DO_SNSMAT
+    and 1000b
+    ld b,a
+    ld a,7
+    call DO_SNSMAT
+    and 100b
+    or b
+    ret
+
+    endif
 
 
 ; --------------------------------------
@@ -600,6 +618,22 @@ _CH_WAIT_USB_MODE:
 
 
 CH_CONFIGURE_RETRIES:
+    or a
+    call HW_CONFIGURE_NAK_RETRY
+    or a
+    ret
+
+; --------------------------------------
+; HW_CONFIGURE_NAK_RETRY
+;
+; Input: Cy = 0 to retry for a limited time when the device returns NAK (this is the default)
+;             1 to retry indefinitely (or for a long time) when the device returns NAK 
+
+HW_CONFIGURE_NAK_RETRY:
+    ld a,0FFh
+    jr nc,_HW_CONFIGURE_NAK_RETRY_2
+    ld a,0BFh
+_HW_CONFIGURE_NAK_RETRY_2:
     push af
     ld a,CH_CMD_SET_RETRY
     out (CH_COMMAND_PORT),a
@@ -612,9 +646,8 @@ CH_CONFIGURE_RETRIES:
     ;  11: Retry NAKs for 3s
     ;Bits 5-0: Number of retries after device timeout
     ;Default after reset and SET_USB_MODE is 8Fh
-    ld a,0FFh 
-    out (CH_DATA_PORT),a
     pop af
+    out (CH_DATA_PORT),a
     ret
 
 
