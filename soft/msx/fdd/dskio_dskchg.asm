@@ -325,7 +325,7 @@ _UFI_READ_SECTOR_CMD:
 
 CALL_XFER:
     push ix
-    ld iy,0
+    ld iy,ROM_BANK_0
     ld ix,XFER
     call CALL_BANK
     pop ix

@@ -89,37 +89,37 @@ DSKSTP:
 
 DSKIO:
     ld ix,DSKIO_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 DSKCHG:
     ld ix,DSKCHG_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 GETDPB:
     ld ix,GETDPB_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 CHOICE:
     ld ix,CHOICE_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
     
 DSKFMT:
     ld ix,DSKFMT_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 INIHRD:
     ld ix,INIHRD_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 INIENV:
     ld ix,INIENV_IMPL
-    ld iy,1
+    ld iy,ROM_BANK_1
     jp CALL_BANK
 
 
@@ -164,7 +164,7 @@ DO_READ_SECTOR_CMD:
     ld a,1
     or a
     ld ix,USB_EXECUTE_CBI_WITH_RETRY
-    ld iy,1
+    ld iy,ROM_BANK_1
     call CALL_BANK
     jr DO_READ_SECTOR_CMD
 

@@ -137,7 +137,7 @@ CHECK_SAME_DRIVE:
     ld a,b
     call WK_SET_LAST_REL_DRIVE
     ld ix,PROMPT
-    ld iy,0
+    ld iy,ROM_BANK_0
     call CALL_BANK
 
 _CHECK_SAME_DRIVE_END:

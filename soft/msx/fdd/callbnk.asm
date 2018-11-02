@@ -15,13 +15,27 @@
     ex (sp),hl
     push af
     ld a,iyl
+    if USE_ASCII8_ROM_MAPPER=1
+    sla a
     ld (6000h),a
+    inc a
+    ld (6800h),a
+    else
+    ld (6000h),a
+    endif
     pop af
     call CALL_IX
     ex (sp),hl  ;L=Previous bank
     push af
     ld a,l
+    if USE_ASCII8_ROM_MAPPER=1
+    sla a
     ld (6000h),a
+    inc a
+    ld (6800h),a
+    else
+    ld (6000h),a
+    endif
     pop af
     pop hl
     ret

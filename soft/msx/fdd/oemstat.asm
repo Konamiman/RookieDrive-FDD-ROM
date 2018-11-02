@@ -59,13 +59,13 @@ OEM_COMMANDS:
 
 OEMC_USBRESET:
     ld ix,RESET_AND_PRINT_INFO
-    ld iy,1
+    ld iy,ROM_BANK_1
     call CALL_BANK
     jp OEM_END
 
 OEMC_USBERROR:
     ld ix,WK_GET_ERROR
-    ld iy,1
+    ld iy,ROM_BANK_1
     call CALL_BANK
     or a
     jr z,_OEMC_USBERROR_ASC
@@ -74,6 +74,23 @@ OEMC_USBERROR:
     ld hl,OEM_S_USBERR
     call OEM_PRINT
     pop af
+    cp USB_ERR_MAX+1
+    jr nc,_OEMC_USBERROR_HEX
+
+    dec a
+    ld c,a
+    sla c
+    ld b,0
+    ld hl,USBERR_S_TABLE
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    call OEM_PRINT
+    jr OEM_END
+
+_OEMC_USBERROR_HEX:
     call OEM_PRINTHEX
     jr OEM_END
 
@@ -114,6 +131,23 @@ OEM_S_ASCQ:
     db  "ASCQ: ",0
 OEM_S_NOERRDATA:
     db  "No error data recorded",0
+
+USBERR_S_TABLE:
+    dw USBERR_S_1
+    dw USBERR_S_2
+    dw USBERR_S_3
+    dw USBERR_S_4
+    dw USBERR_S_5
+    dw USBERR_S_6
+    dw USBERR_S_7
+
+USBERR_S_1: db "NAK",0
+USBERR_S_2: db "Stall",0
+USBERR_S_3: db "Timeout",0
+USBERR_S_4: db "Data error",0
+USBERR_S_5: db "Device was disconnected",0
+USBERR_S_6: db "Panic button pressed",0
+USBERR_S_7: db "Unexpected status received from USB host hardware",0
 
 OEM_PRINTHEX:
     push af
