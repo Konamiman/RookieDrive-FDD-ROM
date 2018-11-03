@@ -712,20 +712,22 @@ CH_READ_DATA:
     ret z   ;No data to transfer at all
     ld b,a
 
+    ld d,a
+    ld c,CH_DATA_PORT
+
     ld a,h
     or l
     jr z,_CH_READ_DISCARD_DATA_LOOP
 
-_CH_READ_DATA_LOOP:
-    in a,(CH_DATA_PORT)
-    ld (hl),a
-    inc hl
-    djnz _CH_READ_DATA_LOOP
+    ld b,d
+    inir
+    ld c,d
     ret
 
 _CH_READ_DISCARD_DATA_LOOP:
-    in a,(CH_DATA_PORT)
+    in a,(c)
     djnz _CH_READ_DISCARD_DATA_LOOP
+    ld c,d
     ret
 
 
@@ -736,21 +738,18 @@ _CH_READ_DISCARD_DATA_LOOP:
 ;
 ; Input:  HL = Source address of the data
 ;         B  = Length of the data
-; Output: HL = HL + C
+; Output: HL = HL + B
 
 CH_WRITE_DATA:
     ld a,CH_CMD_WR_HOST_DATA
     out (CH_COMMAND_PORT),a
-    ld a,b
-    out (CH_DATA_PORT),a
+    ld c,CH_DATA_PORT
+    ld a,b  
+    out (c),a
     or a
     ret z
-_CH_WRITE_DATA_LOOP:
-    ld a,(hl)
-    out (CH_DATA_PORT),a
-    inc hl
-    djnz _CH_WRITE_DATA_LOOP
 
+    otir
     ret
 
 

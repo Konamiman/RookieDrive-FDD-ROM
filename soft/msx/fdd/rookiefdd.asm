@@ -32,7 +32,7 @@ HOSTILE_TAKEOVER:	db   0	  ; 0 = no, 1 = make this an exclusive diskrom
     include "callbnk.asm"
 
     ds 7FFFh-$,0FFh
-    db 0
+    db ROM_BANK_0
 
     ;--- Bank 1: initialization routine, MSX-DOS driver functions implementation and all the USB related code
 
@@ -55,5 +55,5 @@ DEFDPB_1:
     include "callbnk.asm"
 
     ds 7FFFh-$,0FFh
-    db 1
+    db ROM_BANK_1
 
