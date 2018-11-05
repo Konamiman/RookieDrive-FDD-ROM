@@ -15,6 +15,9 @@
     ex (sp),hl
     push af
     ld a,iyl
+    if USE_ALTERNATIVE_PORTS=1
+    or 80h
+    endif
     if USE_ASCII8_ROM_MAPPER=1
     sla a
     ld (6000h),a
@@ -28,6 +31,9 @@
     ex (sp),hl  ;L=Previous bank
     push af
     ld a,l
+    if USE_ALTERNATIVE_PORTS=1
+    or 80h
+    endif
     if USE_ASCII8_ROM_MAPPER=1
     sla a
     ld (6000h),a

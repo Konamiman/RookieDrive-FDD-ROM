@@ -51,11 +51,19 @@ _OEMSTA_UNKNOWN:
 	ret
 
 OEM_COMMANDS:
+
+    if USE_ALTERNATIVE_PORTS=1
+    db "USBRESET2",0
+    dw OEMC_USBRESET
+    db "USBERROR2",0
+    dw OEMC_USBERROR
+    else
     db "USBRESET",0
     dw OEMC_USBRESET
     db "USBERROR",0
     dw OEMC_USBERROR
     db 0
+    endif
 
 OEMC_USBRESET:
     ld ix,RESET_AND_PRINT_INFO

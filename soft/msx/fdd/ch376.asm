@@ -19,8 +19,13 @@ HW_IMPL_CONFIGURE_NAK_RETRY: equ 1
 
 ;--- CH376 port to Z80 ports mapping
 
+    if USE_ALTERNATIVE_PORTS=1
+CH_DATA_PORT: equ 22h
+CH_COMMAND_PORT: equ 23h    
+    else
 CH_DATA_PORT: equ 20h
 CH_COMMAND_PORT: equ 21h
+    endif
 
 ;--- Commands
 

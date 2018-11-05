@@ -4310,6 +4310,11 @@ A576F:
     ld (7000h),a    ;To prevent ROM from initializing again on page 2
     endif
 
+    if USE_ALTERNATIVE_PORTS=1
+    ld a,ROM_BANK_0+80h
+    ld (6000h),a
+    endif
+
     call DO_CHECK_CAN_INIT
     or a
     jp z,A580C
