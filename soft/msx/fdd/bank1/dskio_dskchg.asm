@@ -1,12 +1,19 @@
-; errorcodes used by DSKIO, DSKCHG and GETDPB
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the implementation of the DSKIO, DSKCHG and GETDPB
+; driver routines.
+
+
+; Error codes used by DSKIO, DSKCHG and GETDPB:
 ;
 ; 0	write protect error
 ; 2	not ready error
 ; 4	data (crc) error
 ; 6	seek error
 ; 8	record not found error
-; 10	write fault error
-; 12	other error
+; 10 write fault error
+; 12 other error
 
 
 ; -----------------------------------------------------------------------------
@@ -29,11 +36,6 @@
 DSKIO_STACK_SPACE: equ 32
 
 DSKIO_IMPL:
-
-CHGCLR: equ 0062h
-INIPLT: equ 0141h
-EXTROM: equ 015Fh
-BEEP:   equ 00C0h
 
     if DEBUG_DSKIO=1
     call DO_DEBUG_DSKIO
@@ -117,9 +119,9 @@ _DSKIO_OK_CMD:
     ;* We'll start with one by one transfer if page 1 is involved in the transfer.
 
     bit 7,d
-    jr nz,_DSKIO_SINGLE_TRANSFER    ;Transfer starts at >= 8000h
+    jr nz,_DSKIO_DIRECT_TRANSFER    ;Transfer starts at >= 8000h
     bit 6,d
-    jr nz,_DSKIO_ONE_BY_ONE
+    jr nz,_DSKIO_ONE_BY_ONE         ;Transfer starts at >= 4000h and <8000h
     push de
     push bc
     ex de,hl
@@ -137,26 +139,27 @@ _DSKIO_OK_CMD:
     ;    We transfer sectors directly from/to the source/target address,
     ;    in 16 sector chunks (some device NAK or fail on larger transfers)
 
-_DSKIO_SINGLE_TRANSFER:
+_DSKIO_DIRECT_TRANSFER:
     ld c,0 
-_DSKIO_SINGLE_TRANSFER_LOOP:
+_DSKIO_DIRECT_TRANSFER_LOOP:
     ;Here IX=Read/write command, DE=Transfer address, B=Sectors remaining, C=Sectors transferred so far
 
     ld a,b
     or a
     jp z,_DSKIO_TX_END    ;Terminate if no more sectors to transfer
     cp 16
-    jr c,_DSKIO_SINGLE_TRANSFER_OK_COUNT
+    jr c,_DSKIO_DIRECT_TRANSFER_OK_COUNT
     ld a,16
-_DSKIO_SINGLE_TRANSFER_OK_COUNT:
+_DSKIO_DIRECT_TRANSFER_OK_COUNT:
     ld (ix+8),a     ;Set sector count on command
     push bc
     push de
-    call _DSKIO_TX_ONE
+    call _DSKIO_DO_SECTOR_TX
     pop hl  ;transfer address
-    jr nc,_DSKIO_SINGLE_TRANSFER_OK_BLOCK
+    jr nc,_DSKIO_DIRECT_TRANSFER_OK_BLOCK
 
     ;Transfer error: just update transferred sectors count and terminate
+
     srl b   ;B=transferred sectors (will always be 0 on write, that's ok)
     pop hl  ;L=Sectors transferred so far
     push af
@@ -167,7 +170,7 @@ _DSKIO_SINGLE_TRANSFER_OK_COUNT:
     scf
     jr _DSKIO_TX_END
 
-_DSKIO_SINGLE_TRANSFER_OK_BLOCK:
+_DSKIO_DIRECT_TRANSFER_OK_BLOCK:
     ld b,(ix+8) ;Transfer length in sectors
     sla b
     ld c,0      ;BC = transfer length in bytes
@@ -196,7 +199,7 @@ _DSKIO_SINGLE_TRANSFER_OK_BLOCK:
     pop bc
     pop hl
 
-    jr _DSKIO_SINGLE_TRANSFER_LOOP
+    jr _DSKIO_DIRECT_TRANSFER_LOOP
 
     ;>>> One by one sector transfer, using SECBUF and XFER
 
@@ -206,7 +209,7 @@ _DSKIO_TX_LOOP:
     ;Here IX=Read/write command, DE=Transfer address, B=Sectors remaining, C=Sectors transferred so far
 
     bit 7,d ;Switch to direct transfer if source/target address becomes >=8000h
-    jr nz,_DSKIO_SINGLE_TRANSFER_LOOP
+    jr nz,_DSKIO_DIRECT_TRANSFER_LOOP
 
     push bc
     push de
@@ -217,7 +220,7 @@ _DSKIO_TX_LOOP:
 
 _DSKIO_READ_XFER:
     ld de,(SECBUF)
-    call _DSKIO_TX_ONE
+    call _DSKIO_DO_SECTOR_TX
     jr c,_DSKIO_TX_END_POP
 
     pop de
@@ -236,7 +239,7 @@ _DSKIO_WRITE_XFER:
     call CALL_XFER
 
     ld de,(SECBUF)
-    call _DSKIO_TX_ONE
+    call _DSKIO_DO_SECTOR_TX
     jr c,_DSKIO_TX_END_POP
 
     jr _DSKIO_TX_STEP_OK
@@ -275,14 +278,16 @@ _DSKIO_TX_END_2:
     pop af
     ret
 
-    ;--- Routine for transferring one sector
-    ;    Input:  IX = Command address (with proper sector number and sector count set)
+    ;--- This routine does the actual sector transfer
+    ;    Input:  IX = UFI read or write command address,
+    ;                 with proper sector number and sector count set
     ;            DE = Transfer address
     ;    Output: On success: Cy = 0
     ;            On error:   Cy = 1, A = DSKIO error code
-    ;            BC = Amount of bytes transferred
+    ;            BC = Amount of bytes transferred (on read only)
     ;    Preserves IX
-_DSKIO_TX_ONE:
+
+_DSKIO_DO_SECTOR_TX:
     push ix
     pop hl
     ld b,(ix+8)
@@ -304,13 +309,13 @@ _DSKIO_TX_ONE:
 
     ld a,(ix)
     cp 2Ah
-    jr z,_DSKIO_TX_ONE_2
+    jr z,_DSKIO_DO_SECTOR_TX_2
     ld a,b
     cp 2
     ld a,12
     ret c  ;Return "other error" if no whole sector was read
 
-_DSKIO_TX_ONE_2:
+_DSKIO_DO_SECTOR_TX_2:
     ld a,d
     or a
     ret z   ;Success if ASC = 0
@@ -394,6 +399,8 @@ DSKCHG_IMPL:
 ;		[HL+18]	updated
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
+
+; This routine was borrowed from https://github.com/joyrex2001/dsk2rom
 
 GETDPBERR:
 	pop  bc
@@ -527,6 +534,11 @@ GETDPBEND:
 ;Debug DSKIO
 
     if DEBUG_DSKIO=1
+
+CHGCLR: equ 0062h
+INIPLT: equ 0141h
+EXTROM: equ 015Fh
+BEEP:   equ 00C0h
 
 DO_DEBUG_DSKIO:
     push af

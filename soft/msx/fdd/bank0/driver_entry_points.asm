@@ -1,17 +1,12 @@
-; Base code for the FDD driver for Rookie Drive
+; Rookie Drive USB FDD BIOS
 ; By Konamiman, 2018
-; -----------------------------------------------------------------------------
-; based on DSK2ROM - ASCII8/KonamiSCC megarom driver
-; (C)2007 Vincent van Dam (vincentd@erg.verweg.com)
-; -----------------------------------------------------------------------------
-; based on the template by Arjen Zeilemaker (C)1992-2005 Ultrasoft.
-; many thanks to Ramones for his help, support & testing (and getdpb code!)
-; -----------------------------------------------------------------------------
-; This driver requires a patched BDOS kernel; without the patched kernel it
-; doesn't make much sense.
-; -----------------------------------------------------------------------------
+;
+; This file contains the entry points for the driver functions
+; that live in ROM bank 1, plus the implementation of DRIVES.
 
-; Note that INIHRD, DSKIO, DSKCHG, CHOICE and FORMAT are in separate files
+
+; The following symbols information was borrowed from
+; https://github.com/joyrex2001/dsk2rom
 
 ; symbols which can be used from the kernel
 
@@ -49,8 +44,12 @@
 ; -----------------------------------------------------------------------------
 ; some constants
 ; -----------------------------------------------------------------------------
-	
-MYSIZE:		equ	0		; Size of environment
+
+;How many bytes to allocate in page 3.
+;We don't allocate any because the 8 bytes assigned to our slot
+;in SLTWRK are enough.	
+MYSIZE:		equ	0
+
 SECLEN:		equ	512		; Size of biggest sector
 
 
@@ -74,18 +73,8 @@ DRIVES:
 
 
 ; -----------------------------------------------------------------------------
-; DSKSTP (Not the offical name)
-; -----------------------------------------------------------------------------
-; Input:	None
-; Output:	None
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-DSKSTP:
-	ret
-
-
 ; Entry points for the driver functions
+; -----------------------------------------------------------------------------
 
 DSKIO:
     ld ix,DSKIO_IMPL
@@ -121,7 +110,6 @@ INIENV:
     ld ix,INIENV_IMPL
     ld iy,ROM_BANK_1
     jp CALL_BANK
-
 
 
     ;Disk access experiments

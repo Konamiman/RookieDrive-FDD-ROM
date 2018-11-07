@@ -1,21 +1,46 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
 ; This file contains all the code that depends on the CH376.
+; To adapt the ROM to use a different USB host controller you need to:
 ;
-; To adapt the ROM to use a different USB host controller:
-;
-; - Create a new source file
-; - Copy the HW_IMPL_* constants and set their values as appropriate
-; - Implement all the HW_* routines in the new file
-;   (except those for which HW_IMPL_* is 0)
-; - Include the new file in rookiefdd.asm, replacing the file labeled as "USB host hardware dependant code"
+; 1. Create a new source file.
 
-;--- Routine implementation constants
-;    HW_IMPL_(routine) needs to be 1 if HW_(routine) is implemented
+; 2. Copy the HW_IMPL_* constants and set their values as appropriate,
+;    depending on which routines you are implementing.
+;
+; 3. Implement all the HW_* routines in the new file,
+;    except those for which you have set HW_IMPL_* to 0.
+;
+; 4. Include the new file in rookiefdd.asm, replacing the file labeled as
+;    "USB host hardware dependant code".
+;
+; All the code in this file is stateless: work area is not used,
+; all the required information is passed in registers or buffers.
+
+
+; -----------------------------------------------------------------------------
+; Optional routine implementation flags
+; -----------------------------------------------------------------------------
+;
+; The CH376 has built-in shortcuts for some common USB operations,
+; and this BIOS take advantage of this.
+; If you are adapting this BIOS to a different USB host hardware,
+; you can implement the same routines if the hardware provides the same
+; shortcuts, or leave the constants to 0 if not.
+;
+; HW_IMPL_<routine> needs to be 1 if HW_<routine> is implemented.
 
 HW_IMPL_GET_DEV_DESCR: equ 1
 HW_IMPL_GET_CONFIG_DESCR: equ 1
 HW_IMPL_SET_CONFIG: equ 1
 HW_IMPL_SET_ADDRESS: equ 1
 HW_IMPL_CONFIGURE_NAK_RETRY: equ 1
+
+
+; -----------------------------------------------------------------------------
+; Constant definitions
+; -----------------------------------------------------------------------------
 
 ;--- CH376 port to Z80 ports mapping
 
@@ -149,7 +174,7 @@ _CH_WAIT_TEST_CONNECT:
 ; The returned status is relative to the last time that the routine
 ; was called.
 ;
-; If a device has been connected performs a bus reset that leaves the device
+; If a device has been connected it performs a bus reset that leaves the device
 ; in the "Default" state.
 ; -----------------------------------------------------------------------------
 ; Input:  -
@@ -183,7 +208,7 @@ HW_DEV_CHANGE:
 ;         DE = Address of the input or output data buffer
 ;         A  = Device address
 ;         B  = Maximum packet size for endpoint 0
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         BC = Amount of data actually transferred (if IN transfer and no error)
 
 HW_CONTROL_TRANSFER:
@@ -266,7 +291,7 @@ _CH_CONTROL_STATUS_IN_TRANSFER:
 ;         D  = Maximum packet size for the endpoint
 ;         E  = Endpoint number
 ;         Cy = Current state of the toggle bit
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         BC = Amount of data actually received (only if no error)
 ;         Cy = New state of the toggle bit (even on error)
 
@@ -348,7 +373,7 @@ _CH_DATA_IN_ERR:
 ;         D  = Maximum packet size for the endpoint
 ;         E  = Endpoint number
 ;         Cy = Current state of the toggle bit
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         Cy = New state of the toggle bit (even on error)
 
 HW_DATA_OUT_TRANSFER:
@@ -426,12 +451,14 @@ _CH_DATA_OUT_DONE_2:
     ret
 
 
-; =============================================================================
+; -----------------------------------------------------------------------------
 ; Auxiliary routines
-; =============================================================================
+; -----------------------------------------------------------------------------
 
 ; --------------------------------------
 ; CH_CHECK_INT_IS_ACTIVE
+;
+; Check the status of the INT pin of the CH376
 ;
 ; Output: Z if active, NZ if not active
 
@@ -450,12 +477,14 @@ _CH_WAIT_WHILE_BUSY_LOOP:
     pop af
     ret
 
+
 ; --------------------------------------
 ; CH_WAIT_INT_AND_GET_RESULT
 ;
-; Wait for INT to get active, execute GET_STATUS, and return the matching USB_ERR_*
+; Wait for INT to get active, execute GET_STATUS, 
+; and return the matching USB error code
 ;
-; Output: A = Result of GET_STATUS (one of USB_ERR_*)
+; Output: A = Result of GET_STATUS (an USB error code)
 
 CH_WAIT_INT_AND_GET_RESULT:
     if IMPLEMENT_PANIC_BUTTON=1
@@ -628,33 +657,6 @@ CH_CONFIGURE_RETRIES:
     or a
     ret
 
-; --------------------------------------
-; HW_CONFIGURE_NAK_RETRY
-;
-; Input: Cy = 0 to retry for a limited time when the device returns NAK (this is the default)
-;             1 to retry indefinitely (or for a long time) when the device returns NAK 
-
-HW_CONFIGURE_NAK_RETRY:
-    ld a,0FFh
-    jr nc,_HW_CONFIGURE_NAK_RETRY_2
-    ld a,0BFh
-_HW_CONFIGURE_NAK_RETRY_2:
-    push af
-    ld a,CH_CMD_SET_RETRY
-    out (CH_COMMAND_PORT),a
-    ld a,25h    ;Fixed value, required by CH376
-    out (CH_DATA_PORT),a
-
-    ;Bits 7 and 6:
-    ;  0x: Don't retry NAKs
-    ;  10: Retry NAKs indefinitely (default)
-    ;  11: Retry NAKs for 3s
-    ;Bits 5-0: Number of retries after device timeout
-    ;Default after reset and SET_USB_MODE is 8Fh
-    pop af
-    out (CH_DATA_PORT),a
-    ret
-
 
 ; --------------------------------------
 ; CH_SET_TARGET_DEVICE_ADDRESS
@@ -758,11 +760,21 @@ CH_WRITE_DATA:
     ret
 
 
-    if HW_IMPL_GET_DEV_DESCR = 1
+; -----------------------------------------------------------------------------
+; Optional shortcut routines
+; -----------------------------------------------------------------------------    
 
-; Input:  DE = Address of the input or output data buffer
+; -----------------------------------------------------------------------------
+; HW_GET_DEV_DESCR and HW_GET_CONFIG_DESCR
+;
+; Exectute the standard GET_DESCRIPTOR USB request
+; to obtain the device descriptor or the configuration descriptor.
+; -----------------------------------------------------------------------------
+; Input:  DE = Address where the descriptor is to be read
 ;         A  = Device address
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
+
+    if HW_IMPL_GET_DEV_DESCR = 1
     
 HW_GET_DEV_DESCR:
     ld b,1
@@ -803,6 +815,14 @@ CH_GET_DESCR:
     endif
 
 
+; -----------------------------------------------------------------------------
+; HW_SET_ADDRESS
+;
+; Exectute the standard SET_CONFIGURATION USB request.
+; -----------------------------------------------------------------------------
+; Input: A = Device address
+;        B = Configuration number to assign
+
     if HW_IMPL_SET_CONFIG = 1
 
     ;In: A=Address, B=Config number
@@ -819,9 +839,15 @@ HW_SET_CONFIG:
     endif
 
 
+; -----------------------------------------------------------------------------
+; HW_SET_ADDRESS
+;
+; Exectute the standard SET_ADDRESS USB request.
+; -----------------------------------------------------------------------------
+; Input: A = Adress to assign
+
     if HW_IMPL_SET_ADDRESS = 1
 
-    ;In: A=Address
 HW_SET_ADDRESS:
     push af
     xor a
@@ -835,3 +861,33 @@ HW_SET_ADDRESS:
     ret
 
     endif    
+
+
+; -----------------------------------------------------------------------------
+; HW_CONFIGURE_NAK_RETRY
+; -----------------------------------------------------------------------------
+; Input: Cy = 0 to retry for a limited time when the device returns NAK
+;               (this is the default)
+;             1 to retry indefinitely (or for a long time) 
+;               when the device returns NAK 
+
+HW_CONFIGURE_NAK_RETRY:
+    ld a,0FFh
+    jr nc,_HW_CONFIGURE_NAK_RETRY_2
+    ld a,0BFh
+_HW_CONFIGURE_NAK_RETRY_2:
+    push af
+    ld a,CH_CMD_SET_RETRY
+    out (CH_COMMAND_PORT),a
+    ld a,25h    ;Fixed value, required by CH376
+    out (CH_DATA_PORT),a
+
+    ;Bits 7 and 6:
+    ;  0x: Don't retry NAKs
+    ;  10: Retry NAKs indefinitely (default)
+    ;  11: Retry NAKs for 3s
+    ;Bits 5-0: Number of retries after device timeout
+    ;Default after reset and SET_USB_MODE is 8Fh
+    pop af
+    out (CH_DATA_PORT),a
+    ret

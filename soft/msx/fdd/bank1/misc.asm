@@ -1,3 +1,9 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains miscellaneous routines used by other modules.
+
+
 ; -----------------------------------------------------------------------------
 ; ASC_TO_ERR: Convert UFI ASC to DSKIO error
 ; -----------------------------------------------------------------------------
@@ -148,6 +154,13 @@ _CHECK_SAME_DRIVE_END:
     ret
 
 
+; -----------------------------------------------------------------------------
+; SNSMAT: Read the keyboard matrix
+;
+; This is the same SNSMAT provided by BIOS, it's copied here to avoid
+; having to do an interslot call every time it's used
+; -----------------------------------------------------------------------------
+
 DO_SNSMAT:
     ld c,a
     di
@@ -159,6 +172,13 @@ DO_SNSMAT:
     in a,(0A9h)
     ret
 
-    ;row 6  F3     F2       F1  CODE    CAPS  GRAPH  CTRL   SHIFT
-    ;row 7	RET	   SELECT	BS	STOP	TAB	  ESC    F5    F4
-    ;row 8	right  down     up  left    DEL   INS    HOME  SPACE
+    ;row 6:  F3     F2       F1  CODE    CAPS  GRAPH  CTRL   SHIFT
+    ;row 7:  RET    SELECT   BS  STOP    TAB   ESC    F5     F4
+    ;row 8:	 right  down     up  left    DEL   INS    HOME  SPACE
+
+
+; -----------------------------------------------------------------------------
+; SNSMAT: Print a string describing an USB error code
+; -----------------------------------------------------------------------------
+
+

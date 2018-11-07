@@ -1,4 +1,8 @@
-; This needs to be present in both bank 0 (for the kernel) and bank 1 (for the driver)
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the default DPB (for a 720K disk).
+; This needs to be present in both bank 0 (for the kernel) and bank 1 (for the driver).
 
 	db   0
 	;; default dpb

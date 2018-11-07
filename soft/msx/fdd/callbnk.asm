@@ -1,3 +1,7 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the code to call a routine in another ROM bank.
 ; This code needs to exist in both ROM banks 0 and 1, and at the same address.
 ;
 ; Labels are defined at the main file, not here, so that this file can be included twice.
@@ -6,8 +10,11 @@
     jp (ix)
 
 
-; Call routine in another bank
-; Input: IX = Routine address, IYl = Bank number, all others: input for the routine
+; Call a routine in another bank
+; Input:  IX = Routine address
+;         IYl = Bank number
+;         All others registers = input for the routine
+; Output: All registers = output from the routine
 
 ;CALL_BANK:
     push hl
@@ -20,11 +27,11 @@
     endif
     if USE_ASCII8_ROM_MAPPER=1
     sla a
-    ld (6000h),a
+    ld (ROM_BANK_SWITCH),a
     inc a
     ld (6800h),a
     else
-    ld (6000h),a
+    ld (ROM_BANK_SWITCH),a
     endif
     pop af
     call CALL_IX
@@ -36,11 +43,11 @@
     endif
     if USE_ASCII8_ROM_MAPPER=1
     sla a
-    ld (6000h),a
+    ld (ROM_BANK_SWITCH),a
     inc a
     ld (6800h),a
     else
-    ld (6000h),a
+    ld (ROM_BANK_SWITCH),a
     endif
     pop af
     pop hl

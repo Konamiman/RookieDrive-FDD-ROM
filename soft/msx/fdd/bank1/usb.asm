@@ -1,10 +1,17 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the "high level" (hardware independent)
+; USB operation routines, including the ones related to the CBI protocol.
+; It also contains the code that detects if the connected device is a proper FDD
+; and initializes the work area accordingly.
+
+
 USB_DEVICE_ADDRESS: equ 1
 
 USB_CLASS_MASS: equ 8
 USB_SUBCLASS_CBI: equ 4
 USB_PROTO_WITH_INT_EP: equ 0
-
-REQUEST_SENSE_CMD_CODE: equ 3
 
 
 ; -----------------------------------------------------------------------------
@@ -13,8 +20,8 @@ REQUEST_SENSE_CMD_CODE: equ 3
 ; Check if a device connection or disconnection has happened.
 ; On device connection, initialize it.
 ; On device disconnection, clear work area.
-;
-; Output: Cy=0 if a properly initialized CBI device is connected, 1 if not
+; -----------------------------------------------------------------------------
+; Output: Cy = 0 if a properly initialized CBI device is connected, 1 if not
 
 USB_CHECK_DEV_CHANGE:
     call HW_DEV_CHANGE
@@ -54,13 +61,12 @@ _USB_CHECK_DEV_CHANGE_NO_DEV:
 ; This routine is invoked after a device connections is detected.
 ; If checks if the device is a CBI FDD, and if so, configures it
 ; and initializes the work area; if not, it empties the work area.
-;
+; -----------------------------------------------------------------------------
 ; Output: A = Initialization result
 ;             0: Ok, device is a CBI FDD
 ;             1: The device is not a CBI FDD
 ;             2: Error when querying or initializing the device
-;         B = Error code (one of USB_ERR_*) if A = 2
-; -----------------------------------------------------------------------------
+;         B = USB error code if A = 2
 
 USB_INIT_DEV_STACK_SPACE: equ 64
 
@@ -377,7 +383,7 @@ USB_CMD_SET_CONFIGURATION:
 ; -----------------------------------------------------------------------------
 ; Input:  HL = Address of a 8 byte buffer with the setup packet
 ;         DE = Address of the input or output data buffer
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         BC = Amount of data actually transferred (if IN transfer and no error)
 
 ;This entry point is used before SET_ADDRESS has been executed
@@ -419,7 +425,7 @@ _USB_CONTROL_TRANSFER_DO:
 ; Input:  HL = Address of a buffer for the received data
 ;         BC = Data length
 ;         Cy = 0 for bulk IN endpoint, 1 for interrupt endpoint
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         BC = Amount of data actually received
 
 USB_DATA_IN_TRANSFER:
@@ -518,7 +524,7 @@ _USB_DATA_IN_OK:
 ; -----------------------------------------------------------------------------
 ; Input:  HL = Address of a buffer for the data to send data
 ;         BC = Data length
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 
 USB_DATA_OUT_TRANSFER:
     ld a,b
@@ -773,7 +779,7 @@ _USB_ECBIR_POPALL_END_NZ:
 ;         DE = Address of the input or output data buffer
 ;         BC = Length of data to send or receive
 ;         Cy = 0 to receive data, 1 to send data
-; Output: A  = Error code (one of USB_ERR_*)
+; Output: A  = USB error code
 ;         BC = Amount of data actually transferred (if IN transfer)
 ;         D  = ASC (if no error)
 ;         E  = ASCQ (if no error)
@@ -959,4 +965,4 @@ CBI_ADSC:
     db 21h, 0, 0, 0, 255, 0, 12, 0 ;4th byte is interface number, 6th byte is command length
 
 UFI_CMD_REQUEST_SENSE:
-    db REQUEST_SENSE_CMD_CODE, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0
+    db 3, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0

@@ -1,3 +1,10 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the CALL statements handler and the
+; implementations of the statements themselves.
+
+
 ; -----------------------------------------------------------------------------
 ; OEMSTATEMENT
 ; -----------------------------------------------------------------------------
@@ -65,11 +72,20 @@ OEM_COMMANDS:
     db 0
     endif
 
+
+    ;--- CALL USBRESET
+    ;    Resets USB hardware and prints device info, just like at boot time
+
 OEMC_USBRESET:
-    ld ix,RESET_AND_PRINT_INFO
+    ld ix,VERBOSE_RESET
     ld iy,ROM_BANK_1
     call CALL_BANK
     jp OEM_END
+
+
+    ;--- CALL USBERROR
+    ;    Displays information about the USB or UFI error returned
+    ;    by the last executed UFI command
 
 OEMC_USBERROR:
     ld ix,WK_GET_ERROR
@@ -82,20 +98,7 @@ OEMC_USBERROR:
     ld hl,OEM_S_USBERR
     call OEM_PRINT
     pop af
-    cp USB_ERR_MAX+1
-    jr nc,_OEMC_USBERROR_HEX
-
-    dec a
-    ld c,a
-    sla c
-    ld b,0
-    ld hl,USBERR_S_TABLE
-    add hl,bc
-    ld a,(hl)
-    inc hl
-    ld h,(hl)
-    ld l,a
-    call OEM_PRINT
+    call PRINT_ERROR_DESCRIPTION
     jr OEM_END
 
 _OEMC_USBERROR_HEX:
@@ -140,6 +143,28 @@ OEM_S_ASCQ:
 OEM_S_NOERRDATA:
     db  "No error data recorded",0
 
+
+; -----------------------------------------------------------------------------
+; Print the description of an USB error code
+;
+; Input: A = USB error code
+
+PRINT_ERROR_DESCRIPTION:
+    cp USB_ERR_MAX+1
+    jp nc,OEM_PRINTHEX
+
+    dec a
+    ld c,a
+    sla c
+    ld b,0
+    ld hl,USBERR_S_TABLE
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jp OEM_PRINT
+
 USBERR_S_TABLE:
     dw USBERR_S_1
     dw USBERR_S_2
@@ -156,6 +181,12 @@ USBERR_S_4: db "Data error",0
 USBERR_S_5: db "Device was disconnected",0
 USBERR_S_6: db "Panic button pressed",0
 USBERR_S_7: db "Unexpected status received from USB host hardware",0
+
+
+; -----------------------------------------------------------------------------
+; Print a byte in hexadecimal format
+;
+; Input: A = byte to print
 
 OEM_PRINTHEX:
     push af
@@ -174,6 +205,12 @@ _OEM_PRINTHEX_2:	or	0F0h
 
 	call CHPUT
 	ret
+
+
+; -----------------------------------------------------------------------------
+; Print a zero-terminated string
+;
+; Input: HL = Pointer to the string
 
 OEM_PRINT:
 	ld a,(hl)

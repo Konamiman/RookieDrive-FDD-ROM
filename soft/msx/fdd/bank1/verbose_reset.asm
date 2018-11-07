@@ -1,48 +1,12 @@
-; We do the hardware reset in INIENV and not in INIHRD
-; because we need to setup the work area during reset, but work area
-; is zeroed by kernel between INIHRD and INIENV.
-
-INITXT: equ 006Ch
-
-; -----------------------------------------------------------------------------
-; INIHRD
-; -----------------------------------------------------------------------------
-; Input:	None
-; Output:	None
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
-; -----------------------------------------------------------------------------
-
-INIHRD_IMPL:
-    call INITXT
-	ld hl,ROOKIE_S
-	jp PRINT
-
-
-; -----------------------------------------------------------------------------
-; INIENV
-; -----------------------------------------------------------------------------
-; Input: 	None
-; Output:	None
-; Changed:	AF,BC,DE,HL,IX,IY may be affected
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
 ;
-; Remark:	-
-; -----------------------------------------------------------------------------
+; This routine resets the USB hardware, resets and initializes the device,
+; and prints the device name or the appropriate error message.
+; It is executed at boot time and by CALL USBRESET.
 
-INIENV_IMPL:
 
-    if WAIT_KEY_ON_INIT = 1
-    ld hl,INIHRD_NEXT
-    push hl
-    endif
-
-    call RESET_AND_PRINT_INFO
-    ld b,30
-DELAY_AFTER_PRINT:
-    halt
-    djnz DELAY_AFTER_PRINT
-    ret
-
-RESET_AND_PRINT_INFO:
+VERBOSE_RESET:
     call HW_TEST
     ld hl,NOHARD_S
     jp c,PRINT
@@ -125,6 +89,9 @@ PRINT:
 	jr PRINT
 
 
+; -----------------------------------------------------------------------------
+; Print the device name from INQUIRY command
+
 PRINT_DEVICE_INFO_STACK_SPACE: equ 36
 
 PRINT_DEVICE_INFO:
@@ -188,8 +155,9 @@ INIQUIRY_CMD:
     db 12h, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0
 
 
-;In: HL = Address
-;    B  = Length
+    ; Print a fixed-length space-padded string, skipping the padding
+    ; Input: HL = String address
+    ;        B  = String length
 
 PRINT_SPACE_PADDED_STRING:
     push hl
@@ -220,7 +188,30 @@ _PSPS_P_LOOP:
     djnz _PSPS_P_LOOP
 
     ret
-  
+
+
+; -----------------------------------------------------------------------------
+; Print an error message and the description of an USB error code
+;
+; Input: HL = Error message
+;        A = Error code
+
+PRINT_ERROR:
+    push af
+    call PRINT
+    pop af
+
+    ld ix,PRINT_ERROR_DESCRIPTION
+    ld iy,ROM_BANK_0
+    call CALL_BANK
+
+    ld hl,CRLF_S
+    jp PRINT
+
+
+; -----------------------------------------------------------------------------
+; Strings
+
 ROOKIE_S:
 	db "Rookie Drive FDD BIOS v1.0",13,10
 	db "(c) Konamiman 2018",13,10
@@ -251,12 +242,3 @@ DEVERR_S:
 ERR_INQUIRY_S:
     db  "ERROR querying the device name: ",0
 
-;In: HL = Error message, A = Error code
-PRINT_ERROR:
-    push af
-    call PRINT
-    pop af
-    add "0"
-    call CHPUT
-    ld hl,CRLF_S
-    jp PRINT

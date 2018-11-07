@@ -1,14 +1,21 @@
-; errorcodes used by DSKFMT
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the implementation of the CHOICE and DSKFMT
+; driver routines.
+
+
+; Error codes used by DSKFMT:
 ;
 ; 0	write protect error
 ; 2	not ready error
 ; 4	data (crc) error
 ; 6	seek error
 ; 8	record not found error
-; 10	write fault error
-; 12	bad parameter
-; 14	insufficient memory
-; 16	other error
+; 10 write fault error
+; 12 bad parameter
+; 14 insufficient memory
+; 16 other error
 
 
 ; -----------------------------------------------------------------------------
@@ -43,8 +50,8 @@ DSKFMT_IMPL:
     call CHECK_SAME_DRIVE
 
     push bc
-    call DSKCHG_IMPL    ;In case drive reports disk change as "not ready"
-    pop bc
+    call DSKCHG_IMPL    ;To eat a possible "not ready" error reported by
+    pop bc              ;the device on disk change
 
     dec c
 
@@ -81,12 +88,15 @@ _DSKFMT_END_ERR2:
     ret
 
 
-;--- Physically format the disk
-;    Input:  Cy=0 for 720K disk, 1 for 1.44M disk
-;    Output: Cy=0 inf ok, Cy=1 and A=DSKIO error code on error
+; ----------------------------------------------------------------------------
+; PHYSICAL_FORMAT
+; ----------------------------------------------------------------------------
+; Input:  Cy = 0 for 720K disk, 1 for 1.44M disk
+; Output: Cy = 0 if ok
+;         Cy = 1 and A=DSKFMT error code on error
 
 _PHYSICAL_FORMAT_STACK_SPACE: equ 12
-_PHYSICAL_FORMAT_TRACKS_COUNT: equ 80
+_PHYSICAL_FORMAT_TRACKS_PER_SIDE_COUNT: equ 80
 
 PHYSICAL_FORMAT:
     if HW_IMPL_CONFIGURE_NAK_RETRY=1
@@ -114,6 +124,12 @@ _PHYSICAL_FORMAT_2:
     call DO_SNSMAT
     and 1
     jr nz,_PHYSICAL_FORMAT_DO_TRACK_BY_TRACK
+
+    ;Usually devices implement single track formatting only,
+    ;so by default we'll format all the tracks one by one in a loop.
+    ;However the single all tracks format command will be used
+    ;if SHIFT is pressed (together with any other key)
+    ;when the "Strike a key when ready" command is presented.
 
 _PHYSICAL_FORMAT_DO_ALL_TRACKS:
     ld bc,24
@@ -207,7 +223,7 @@ _PHYSICAL_FORMAT_TRACK_LOOP:
 _PHYSICAL_FORMAT_NEXT_TRACK:
     inc b
     ld a,b
-    cp _PHYSICAL_FORMAT_TRACKS_COUNT
+    cp _PHYSICAL_FORMAT_TRACKS_PER_SIDE_COUNT
     jr c,_PHYSICAL_FORMAT_TRACK_LOOP
     ret
 
@@ -230,15 +246,32 @@ _UFI_FORMAT_UNIT_DATA_1440K_ALL_TRACKS:
     db 0, 0A0h, 0, 8, 0, 0, 0Bh, 040h, 0, 0, 2, 0    
 
 
-;--- Logically format the disk
-;    Input:  Cy=0 for 720K disk, 1 for 1.44M disk
-;    Output: Cy=0 if ok, Cy=1 and A=DSKIO error code on error
+; ----------------------------------------------------------------------------
+; LOGICAL_FORMAT
+;
+; Initializes boot sector, FAT and root directory of the disk.
+;
+; MSX-DOS 1 doesn't support the standard 1.44MB format because this format
+; uses 9 sectors per FAT, but DOS 1 loads the entire FAT in memory after
+; having allocated just 1.5K (worth 3 sectors) for it.
+; There isn't any validation so the computer just crashes.
+;
+; As a workaround for the above, this BIOS will apply a custom format
+; of 3 sectors/FAT and 4 sectors/cluster when a 1.44MB is formatted
+; in DOS 1 mode (I know, the driver shouldn't be aware of the DOS version
+; under which it exists, but this is not a perfect world); in DOS2 mode
+; the standard 9 sectors/FAT and 1 sector/cluster format will be applied.
+; ----------------------------------------------------------------------------
+; Input:  Cy = 0 for 720K disk
+;              1 for 1.44M disk
+; Output: Cy = 0 if ok
+;         Cy = 1 and A=DSKFMT error code on error
 
 LOGICAL_FORMAT:
     ld hl,BOOT_PARAMETERS_720K
     jr nc,_LOGICAL_FORMAT_DO
     ld hl,BOOT_PARAMETERS_1440K_DOS1
-    ld a,(DOSVER)
+    ld a,(DOSVER)   ;We shouldn't do this but :shrug:
     or a
     jr z,_LOGICAL_FORMAT_DO
     ld hl,BOOT_PARAMETERS_1440K
@@ -327,8 +360,9 @@ _LOGICAL_FORMAT_DO:
     jp _LOGICAL_FORMAT_WR_SECTORS
 
 
-    ;Write SECBUF repeatedly in a range of sectors
-    ;Input: DE=first sector, B=how many sectors
+    ;--- Write the contents of SECBUF repeatedly in a range of sectors
+    ;    Input: DE = first sector, B = how many sectors
+
 _LOGICAL_FORMAT_WR_SECTORS:
     push ix
     push de
@@ -366,8 +400,9 @@ _LOGICAL_FORMAT_ZERO_SECBUF:
     ldir
     ret
 
+
 BOOT_SECTOR:
-	db	0EBh,0FEh,90h,"ROOKIE  "
+	db	0EBh,0FEh,90h,"ROOKIENX"
 	db	00h,02h
 BOOT_DISK_PARAMETERS:    
     db  02h,01h,00h,02h,70h,00h,0A0h,05h,0F9h,03h,00h,09h
@@ -384,6 +419,7 @@ BOOT_DISK_PARAMETERS_END:
 	db	"MSXDOS  SYS"
 BOOT_SECTOR_END:
 
+
 ;Disk parameters that are different for each disk format:
 ;+0: Sectors per cluster
 ;+4: Root directory entries
@@ -396,6 +432,8 @@ BOOT_PARAMETERS_720K:
 	db	02h,01h,00h,02h,70h,00h,0A0h,05h,0F9h,03h,00h,09h
 
 BOOT_PARAMETERS_1440K:
+    ;Media ID should be F0h here, but then DOS 2 complains with
+    ;"Not a DOS disk" after format finishes. Go figure.
 	db	01h,01h,00h,02h,0E0h,00h,40h,0Bh,0F8h,09h,00h,12h
 
 BOOT_PARAMETERS_1440K_DOS1:
@@ -406,7 +444,7 @@ BOOT_PARAMETERS_1440K_DOS1:
 
 ; -----------------------------------------------------------------------------
 ; Get information about the disk currently in the drive
-;
+; -----------------------------------------------------------------------------
 ; Input:  A = 1 to retry "disk changed" error
 ; Output: A = DSKIO error code (if Cy=1)
 ;         Cy = 1 on error

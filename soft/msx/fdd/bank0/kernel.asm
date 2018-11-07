@@ -1,3 +1,11 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This is the original MSX-DOS 1 kernel with some patches
+; to allow for custom SHIFT and CTRL keys behavior,
+; the patching code is located at the end of the file.
+
+
 ; DOS1.MAC
 
 ; DOS 1.x kernel
@@ -172,6 +180,7 @@ RAWFLG	equ	0F30DH			; read after write (verify) flag
 YF30E	equ	0F30EH			; date format (0 japanese, 1 european, 2 american)
 YF30F	equ	0F30FH			; double byte header char table
 					; looks like F313-F322 are unused
+DOSVER: equ 0F313H          ; 0 for DOS 1, <>0 for DOS 2
 YF323	equ	0F323H			; diskerror handler pointer
 YF325	equ	0F325H			; abort handler pointer
 XF327	equ	0F327H			; AUX input hook (MSXHOOK style), default returns CTRL-Z in register A
@@ -195,7 +204,7 @@ YF347	equ	0F347H			; number of drives in disksystem
 YF348	equ	0F348H			; slotid disksytem rom
 YF349	equ	0F349H			; disksystem bottom (lowest address used by the disksystem)
 YF34B	equ	0F34BH			; msxdos system bottom
-SECBUF  equ	0F34DH			; pointer to sectorbuffer, can be used by the diskdriver
+SECBUF equ	0F34DH			; pointer to sectorbuffer, can be used by the diskdriver
 YF34F	equ	0F34FH			; pointer to datasectorbuffer
 YF351	equ	0F351H			; pointer to directorysectorbuffer
 YF353	equ	0F353H			; pointer to the diskbasic FCB's
@@ -268,7 +277,7 @@ H.DSKI	equ	0FE17H
 H.LSET	equ	0FE21H
 H.RSET	equ	0FE26H
 H.FIEL	equ	0FE2BH
-H.MKI 	equ	0FE30H
+H.MKI	equ	0FE30H
 H.MKS	equ	0FE35H
 H.MKD	equ	0FE3AH
 H.CVI	equ	0FE3FH
@@ -394,7 +403,7 @@ RETRTN	equ	WRPRIM+6	; address with a RET instruction, allways available
 
 
 	defb	"AB"
-	defw    A576F
+	defw	A576F
 	defw	A6576
 	defw	0
 	defw	0
@@ -407,7 +416,9 @@ T4013:	jp	DSKCHG			; DSKCHG entrypoint
 T4016:	jp	GETDPB			; GETDPB entrypoint
 T4019:	jp	CHOICE			; CHOICE entrypoint
 T401C:	jp	DSKFMT			; DSKFMT entrypoint
-T401F:	jp	DSKSTP			; DSKSTP entrypoint
+T401F:	ret                 ; DSKSTP entrypoint
+        ret
+        ret
 
 ; kernel entries
 
@@ -434,19 +445,17 @@ A4030:	ld	hl,(YF34B)
 ;	Inputs		-
 ;	Outputs		Zx set if no input, Zx reset if input, A = input
 
-A4034:	jp	PA4034 ;; xxxx ---- moved original code
-	
-	;; xxxx safe mode patches ----------------------------
-PA56D3:	jp	A56D3
-PA6055:	jp	A6055
-PA6AA7:	jp	A6AA7
-PA69E7:	jp	A69E7
-PA71D3:	jp	A71D3
-PA72E4:	jp	A72E4
-	;; keep alignment for bdos calls (msxdos jumps directly to these!)
-	DEFS	0404BH-$,0
-	;; xxxx safe mode patches ----------------------------
-	
+A4034:	push	ix
+	ld	ix,BREAKX
+	call	A40AB			; BREAKX BIOS call
+	pop	ix			; CTRL-STOP pressed ?
+	jr	nc,A404B		; nope,
+	ld	a,003H
+	ld	(YF336),a		; saved input available
+	ld	(YF337),a		; CTRL-C
+	and	a			; flag NZ
+	ret
+
 A404B:	ld	a,(YF336)
 	and	a			; saved input available ?
 	ld	a,(YF337)
@@ -3177,7 +3186,7 @@ A509F:	ld	hl,00080H
 	ld	(YF23D),hl		; default transferaddress
 	xor	a
 	ld	(YF247),a		; default driveid 0 (A:)
-A50A9:	call	A472D			; flush datasector buffer
+	call	A472D			; flush datasector buffer
 	ld	hl,YF355
 	ld	a,(YF347)		; all drives
 A50B2:	ld	e,(hl)
@@ -4305,64 +4314,33 @@ T570D:	defw	A40A7,A5445,A53A7,A546E,A5474,A5465,A5454,A5462
 	defw	A4720
 
 A576F:
-	;; xxxx ----- init ascii8 mapper
-	;ld	a,1
-ASCII8P2_1: equ $+1
-	;ld	($7000),a
-	;; xxxx -----
-	call	INIHRD			; initialize diskhardware
-	di
-	;; xxxx ---------------------------------------------------------------
-	ld      a,(HOSTILE_TAKEOVER)
-	or      a
-	jr      nz,HOSTILE001
-	;; xxxx - original code
-	ld	a,(DEVICE)
-	and	a			; abort disksystem init ?
-	ret	m			; yep, quit
-	jp	nz,A580C		; disksystem init already started by an other diskrom, skip init
-	;; xxxx - original code
-	jr      HOSTILE002
-HOSTILE001:	
-	;; xxxx - hostile takeover => make us the primary diskrom!
-	xor     a
-	ld      (DEVICE),a
-	ld      (HOKVLD),a
-HOSTILE002:	
-	;; xxxx ---------------------------------------------------------------
-	
-	ld	hl,HOKVLD
-	bit	0,(hl)			; EXTBIO hook valid ?
-	jr	nz,A578E
-	set	0,(hl)
-	ld	hl,EXTBIO
-	ld	b,3*5
-A5789:	ld	(hl),0C9H
-	inc	hl
-	djnz	A5789			; nop, init EXTBIO,DISINT and ENAINT hooks
-A578E:
-	;; 	ld	hl,(BOTTOM)
-	;; 	ld	de,0C001H
-	;; 	rst	020H			; at least 16Kb RAM ?
-	;; 	jr	nc,A57A3		; nop, abort
-	;; 	ld	a,006H
-	;; 	call	SNSMAT
-	;; 	di
-	;; 	rrca				; SHIFT key pressed ?
-	;; 	jr	c,A57A9			; nop, cont
-	;; 	ld	a,007H
-	;; 	rst	018H			; beep
-	;; A57A3:	ld	a,0FFH
-	;;  	ld	(DEVICE),a		; flag abort disksystem init
-	;;  	ret
+    if USE_ASCII8_ROM_MAPPER=1
+    ld a,ROM_BANK_0*2+1
+    ld (6800h),a    ;Set proper bank on second half of page 1
+    ld (7000h),a    ;To prevent ROM from initializing again on page 2
+    endif
+
+    if USE_ALTERNATIVE_PORTS=1
+    ld a,ROM_BANK_0+80h
+    ld (ROM_BANK_SWITCH),a
+    endif
+
+    call DO_CHECK_CAN_INIT
+    or a
+    jp z,A580C
+    dec a
+    jr z,A57A9
+    dec a
+    ret z
+	ld	a,007H
+	rst	018H			; beep
+    ret    
+
+    ds 57A9h-$,0FFh
 
 ;	Subroutine	Initialize disksystem, first diskrom
 
 A57A9:	ld	hl,0F380H+MYSIZE
-	;; xxxx ------------------
-	ds	4	;ld	de,(DECOMPRESS_BUFFER_SIZE)
-	ds	1	;add	hl,de
-	;; xxxx ------------------
 	ld	de,XF1C9
 	and	a
 	sbc	hl,de			; bytes needed for static workarea+workarea driver
@@ -4393,15 +4371,16 @@ A57D6:	ld	(hl),0C9H
 	ld	hl,0C9A8H
 	ld	(XF365+0),a
 	ld	(XF365+1),hl		; read primairy slotregister entry
-	;; 	ld	a,006H
-	;; 	call	SNSMAT
-	;; 	and	002H
-	;; xxxx - force ctrl
-	xor	a
-	;; xxxx -------------
+	ld	a,006H
+    if INVERT_CTRL_KEY
+    call    SNSMAT_AND_INVERT_CTRL
+    else
+	call	SNSMAT
+    endif
+	and	002H
 	ld	(YF33F),a		; saved CTRL key status for panthom drive
-	;; 	ld	a,007H
-	;; 	rst	018H			; beep
+	ld	a,007H
+	rst	018H			; beep
 	ld	hl,T5807
 	ld	de,H.RUNC
 	ld	bc,5
@@ -4413,9 +4392,6 @@ A57D6:	ld	(hl),0C9H
 
 T5807:	rst	030H
 	defb	0
-	;; xxxx -------- doesn't require patch (basic startup hook)
-	;; 	defw	PA5897
-	;; xxxx --------
 	defw	A5897
 	ret
 
@@ -4432,12 +4408,6 @@ A5812:	add	a,(hl)
 	cp	8			; 8 or more drives ?
 	ret	nc			; yep, no more drives!
 	ld	hl,MYSIZE		; number of bytes for workarea driver
-	;; xxxx ------------------
-	ds	1	;push    de
-	ds	4	;ld	de,(DECOMPRESS_BUFFER_SIZE)
-	ds	1	;add	hl,de
-	ds	1	;pop     de
-	;; xxxx ------------------
 	call	A5EE8			; allocate memory (adjust BASIC areapointers)
 	ret	c			; failed, quit
 	ex	de,hl
@@ -4509,20 +4479,9 @@ A587E:	ld	(hl),e
 	jr	nz,A587E		; next drive
 	call	INIENV			; initialize driver workarea
 
-	;; xxxx - hostile takeover
-	ld      a,(HOSTILE_TAKEOVER)
-	or      a
-	jr      nz,HOSTILE003
-	;; xxxx - original code
-	ld	hl,DEVICE
-	inc	(hl)			; increase diskdriver count
-	ret
-	;; xxxx - prevent other diskroms to initialize
-HOSTILE003:
-	ld      a,129
-	ld      (DEVICE),a
-	ret
-	;; xxxx ------------------
+    jp DO_SET_DEVICE
+
+    ds 5897h-$,0FFh
 
 ;	Subroutine	H.RUNC interceptor
 ;	Inputs		-
@@ -4536,25 +4495,11 @@ A589C:	ld	(hl),0C9H
 	inc	hl
 	djnz	A589C			; clear RUNC hook
 
-	;; xxxx - hostile takeover
-	ld      a,(HOSTILE_TAKEOVER)
-	or      a
-	jr      nz,HOSTILE004
-	;; xxxx - original code
- 	ld	hl,DEVICE
-	xor	a
-	cp	(hl)
-	ld	(hl),a			; clear diskinterface count
-	ret	p			; already cleared, return control
-	jr      HOSTILE005
-	;; xxxx - continue initialisation
-HOSTILE004:	
-	xor	a
-	ld	hl,DEVICE
-	ld	(hl),a
-HOSTILE005:	
-	;; xxxx -------------------------
-	
+    call DO_RUNC_INTERCEPTOR
+    ret c
+
+    ds 58A8h-$,0FFh
+
 A58A8:	call	A622D			; hook H.LOPD when H.CLEA is hooked (for register system bottom)
 	ld	(YF348),a		; disksystem diskrom slotid
 	ld	hl,A7397
@@ -4687,22 +4632,11 @@ A59C1:	ld	c,040H
 	jr	c,A59CB
 	ld	(RAMAD1),a		; found, set ram slotid page 1
 A59CB:	ld	sp,0C200H		; switch to a temporary stack, just above temp startbuffer
-
-	;; xxxx - hostile takeover
-	ld      a,(HOSTILE_TAKEOVER)
-	or      a
-	jr      nz,HOSTILE006
-	;; xxxx - original code
 	ld	a,(H.STKE+0)
 	cp	0C9H			; STKE hook set ?
 	jr	z,A59DB			; nop, cont
 	ld	ix,M7D17
 	jr	A59ED			; skip BASIC extension ROMs and transfer control
-	;; xxxx - skip H.STKE
-HOSTILE006:	
-	ld      a,0C9H
-	ld      (H.STKE+0),a
-	;; xxxx----------------
 
 A59DB:	ld	hl,SLTATR
 	ld	b,040H
@@ -4715,13 +4649,8 @@ A59E0:	ld	a,(hl)
 
 A59E9:	ld	ix,M7E14		; start BASIC program in ROM
 A59ED:	call	A5C16			; initialize diskbasic
-	;; JP	CALBAS
-	;; xxxx - new driver hook; inihrd_basic
-	call	CALBAS
-	call	INIHRD_BASIC
-	ret
-	;; xxxx -------------------------------
-	
+	jp	CALBAS
+
 A59F3:	ld	hl,A5B3A
 	push	hl			; if quit anywhere start diskbasic
 	call	A5AE7			; read bootsector
@@ -4776,9 +4705,6 @@ J5A36:	LD	(HL),A
 	LD	(XF36B+1),HL
 	LD	HL,I63A1
 	LDIR				; install ENAKRN and ENARAM
-	;; xxxx -----
-	ds	3	;CALL    PATCH_KERNEL_BANKSWITCH
-	;; xxxx -----	
 	LD	BC,360			; size of the slotswitching routines
 	CALL	A5EAD			; allocate MSXDOS memory (halt when error)
 	PUSH	HL
@@ -4989,9 +4915,6 @@ A5BA0:	ld	sp,0C200H		; switch to a temporary stack
 	rst	018H			; clear screen
 	ld	ix,M7D31
 	call	CALBAS			; display BASIC startscreen
-	;; xxxx - new driver hook; inihrd_basic
-	call	INIHRD_BASIC
-	;; xxxx -------------------------------
 	call	A5F86
 	defb	13,10
 	defb	"Disk BASIC version 1.0",13,10
@@ -4999,7 +4922,7 @@ A5BA0:	ld	sp,0C200H		; switch to a temporary stack
 	ld	hl,M4173
 	push	hl			; execute RUN command
 	ld	hl,BUF+10-1
-	push	hl			; 'basicpointer'
+	push	hl			; basicpointer
 	ld	hl,BUF+64
 	push	hl
 	ld	(hl),0E1H
@@ -5021,7 +4944,7 @@ A5C16:	ld	hl,T72AE
 	ld	(HIMEM),hl
 	ld	a,(YF345)
 	ld	c,a
-	ld	b,0			; number of FCB's
+	ld	b,0			; number of FCBs
 	ld	de,37
 	call	A4916			; * 37
 	call	A5EB8			; allocate memory (adjust HIMEM, halt when error)
@@ -5112,16 +5035,11 @@ T5C96:	defw	H.DSKO,A6B96
 	defw	H.BAKU,A6875
 	defw	H.PARD,A7323
 	defw	H.NODE,A737C
-	;; xxxx ---------
-	;; 	defw	H.ERRP,A71D3
-	defw	H.ERRP,PA71D3
-	;; 	defw	H.PHYD,A6055
-	defw	H.PHYD,PA6055
+	defw	H.ERRP,A71D3
+	defw	H.PHYD,A6055
 	defw	H.FORM,A60B0
-	;; 	defw	XF331,A56D3
-	defw	XF331,PA56D3
+	defw	XF331,A56D3
 	defw	0
-	;; xxxx ---------
 
 T5D24:	defb	1,048H,"-",1,041H,"-",1,047H,"):",0
 T5D2F:	defb	"M-D-Y):",0
@@ -5561,12 +5479,10 @@ A5FBE:	and	00CH
 
 GETWRK:
 A5FC2:	call	A5FCD			; get my SLTWRK entry
-	;ld	a,(hl)
-	;inc	hl
-	;ld	h,(hl)
-	;ld	l,a			; pointer to workarea
-    dec hl
-    dec hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a			; pointer to workarea
 	push	hl
 	pop	ix
 	ret
@@ -5620,18 +5536,7 @@ A5FF6:	ld	a,(H.TIMI+0)
 	cp	0C9H
 	jr	z,A6012			; H.TIMI not hooked, skip saving H.TIMI
 	push	hl
-
-	;; xxxx --------
-	ld	a,(HOSTILE_TAKEOVER)
-	or	a
-	jr	nz,HOSTILE008
-	;; xxxx - orinal code
-	ld	a,(DEVICE)		; this diskdriver number
-	jr	HOSTILE008
-	ld	a,1
-HOSTILE008:
-	;; xxxx --------
-	
+	call    GET_DEVICE_FOR_INT  ;ld	a,(DEVICE)		; this diskdriver number
 	ld	hl,YFB29
 	call	A5FF1
 	add	hl,bc
@@ -6033,10 +5938,7 @@ T62ED:	ld	a,d
 	jp	nc,M6EC6+3		; nope, resume BLOAD
 	rst	030H
 	defb	000H
-	;; xxxx --------
-	;; 	defw	A6AA7			; call BLOAD for diskdevice
-	defw	PA6AA7
-	;; xxxx --------
+	defw	A6AA7			; call BLOAD for diskdevice
 	push	hl
 	jp	M6EF4			; finish BLOAD
 
@@ -6045,10 +5947,7 @@ T62ED:	ld	a,d
 	jp	nc,M6E92+3		; nope, resume BSAVE
 	rst	030H
 	defb	000H
-	;; xxxx ---------
-	;; 	defw	A69E7
-	defw	PA69E7
-	;; xxxx ---------
+	defw	A69E7
 	ret
 
 A6306:	PUSH	DE
@@ -6135,8 +6034,7 @@ J6375:	POP	AF
 	CALL	CALSLT
 	JR	J6369
 
-I637B:	
-    PUSH	AF
+I637B:	PUSH	AF
 	PUSH	HL
 	PUSH	DE
 	PUSH	BC
@@ -6531,7 +6429,7 @@ J656F:	LD	(YFFFF),A
 	OUT	(0A8H),A
 	RET
 
-A6576:	ld	a,(H.GETP+0)
+A6576: ld	a,(H.GETP+0)
 	cp	0C9H
 	scf
 	ret	z
@@ -7237,7 +7135,7 @@ A6939:	ld	ix,M739A		; quit loading & start (headloop/executing)
 	ld	bc,5
 	push	de
 	ldir
-	pop	hl			; 'basicpointer'
+	pop	hl			; basicpointer
 	ld	ix,M4601
 	jp	A731E			; continue in the execution loop
 
@@ -8525,10 +8423,7 @@ A72E6:	ld	(H.LOPD+0),a
 
 T72F2:	rst	030H
 	defb	000H
-	;; xxxx --------
-	;; 	defw	A72E4
-	defw	PA72E4
-	;; xxxx --------
+	defw	A72E4
 	ret
 
 A72F7:	ld	e,010H
@@ -8567,9 +8462,6 @@ A7315:	ld	e,005H
 A7318:	ld	e,002H
 	ld	ix,M406F		; BASIC error
 A731E:	call	CALBAS
-	;; xxxx - new driver hook; inihrd_basic
-	call	INIHRD_BASIC
-	;; xxxx -------------------------------
 	ei
 	ret
 
@@ -8749,18 +8641,127 @@ A7397:	call	XF36B			; enable ram on page 1
 
 	defb	31,28,31,30,31,30,31,31,30,31,30,31
 
-	;; xxxx ----- moved to free space for hacks (keeps alignment)
-PA4034:	push	ix
-	ld	ix,BREAKX
-	call	A40AB			; BREAKX BIOS call
-	pop	ix			; CTRL-STOP pressed ?
-	;; xxxx ----- target out or range due to move
-	;; 	jr	nc,A404B		; nope,
-	jp	nc,A404B		; nope,
-	;; xxxx
-	ld	a,003H
-	ld	(YF336),a		; saved input available
-	ld	(YF337),a		; CTRL-C
-	and	a			; flag NZ
+
+; -----------------------------------------------------------------------------
+; Patches and moved code
+; -----------------------------------------------------------------------------
+
+    if INVERT_CTRL_KEY
+SNSMAT_AND_INVERT_CTRL:
+    call SNSMAT
+    xor 2
+    ret
+    endif
+
+    ;The following patches allows us to become the only disk driver when SHIFT is pressed
+    ;(or, if DISABLE_OTHERS_BY_DEFAULT=1, when GRAPH is not pressed).
+    ;Inspired by the "hostile takeover" mode in https://github.com/joyrex2001/dsk2rom
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: A= 0 to skip init (disksystem init already started by an other diskrom )
+    ;        1 to continue init
+    ;        2 to abort init
+    ;        3 to abort init (and beep)
+
+DO_CHECK_CAN_INIT:
+	call	INIHRD			; initialize diskhardware
+    call MUST_DISABLE_OTHERS
+    jr nc,_DO_CHECK_CAN_INIT_2
+
+   	xor     a
+	ld      (DEVICE),a
+	ld      (HOKVLD),a
+    jr       _DO_CHECK_CAN_INIT_3
+
+_DO_CHECK_CAN_INIT_2:
+	di
+	ld	a,(DEVICE)
+	and	a			; abort disksystem init ?
+	ld a,2
+    ret	m			; yep, quit
+    ld a,0
+	ret nz 	; disksystem init already started by an other diskrom, skip init
+
+_DO_CHECK_CAN_INIT_3:
+	ld	hl,HOKVLD
+	bit	0,(hl)			; EXTBIO hook valid ?
+	jr	nz,A578E
+	set	0,(hl)
+	ld	hl,EXTBIO
+	ld	b,3*5
+A5789:	ld	(hl),0C9H
+	inc	hl
+	djnz	A5789			; nop, init EXTBIO,DISINT and ENAINT hooks
+A578E:	ld	hl,(BOTTOM)
+	ld	de,0C001H
+	rst	020H			; at least 16Kb RAM ?
+    ld a,3
+    ret nc  	; nop, abort
+	ld a,1
+    ret
+
+    ;------------------------------------------------------------------------------
+
+DO_SET_DEVICE:
+    call MUST_DISABLE_OTHERS
+    jr nc,_DO_SET_DEVICE_2
+
+	ld      a,129
+	ld      (DEVICE),a
 	ret
-	;; xxxx ----------
+
+_DO_SET_DEVICE_2:
+	ld	hl,DEVICE
+	inc	(hl)			; increase diskdriver count
+	ret
+
+    ;------------------------------------------------------------------------------
+
+GET_DEVICE_FOR_INT:
+    call MUST_DISABLE_OTHERS
+    ld a,1
+    ret c
+    ld a,(DEVICE)
+    ret
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: Cy=1 to return to caller immediately
+
+DO_RUNC_INTERCEPTOR:
+    call MUST_DISABLE_OTHERS
+    jr c,_DO_RUNC_INTERCEPTOR_2
+
+    ld	hl,DEVICE
+	xor	a
+	cp	(hl)
+	ld	(hl),a			; clear diskinterface count
+    scf
+	ret	p			; already cleared, return control
+    or a
+    ret
+
+_DO_RUNC_INTERCEPTOR_2:
+	xor	a
+	ld	hl,DEVICE
+	ld	(hl),a
+    or a
+    ret
+
+    ;------------------------------------------------------------------------------
+
+    ;Out: Cy=1 if other drivers need to be disabled
+
+MUST_DISABLE_OTHERS:
+    ld a,6
+    call	SNSMAT
+	di
+	rrca
+    if DISABLE_OTHERS_BY_DEFAULT    ;...then return Cy=1 if GRAPH is NOT pressed
+    rrca
+    rrca
+    else                            ;...then return Cy=1 if SHIFT is pressed
+    ccf
+    endif
+    ret
