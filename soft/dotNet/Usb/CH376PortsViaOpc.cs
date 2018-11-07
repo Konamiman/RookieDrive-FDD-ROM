@@ -24,6 +24,8 @@ namespace Konamiman.RookieDrive.Usb
 
         public bool IntIsActive => (ReadStatus() & 0x80) == 0;
 
+        public bool DeviceIsBusy => (ReadStatus() & 0x10) == 0x10;
+
         public byte ReadData()
         {
             opc.ReadFromPort(dataPort, DataBuffer, 0, 1, false);
@@ -52,6 +54,11 @@ namespace Konamiman.RookieDrive.Usb
         {
             DataBuffer[0] = data;
             opc.WriteToPort(dataPort, DataBuffer, 0, 1, false);
+        }
+
+        public void WriteMultipleData(byte[] data)
+        {
+            opc.WriteToPort(dataPort, data, false);
         }
     }
 }

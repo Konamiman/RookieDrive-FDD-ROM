@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Linq;
+using System.Threading;
 
 namespace Konamiman.RookieDrive.Usb
 {
     public class UsbHost : IUsbHost
     {
         const byte UsbDeviceAddress = 1;
+        const byte UsbHubAddress = 2;
         private static readonly byte[] UsbDeviceAddressArray = new byte[] { UsbDeviceAddress };
         private static readonly byte[] NoDevices = new byte[0];
 
@@ -113,11 +115,13 @@ namespace Konamiman.RookieDrive.Usb
             UsbSetupPacket getDescriptorSetupPacket = new UsbSetupPacket(UsbStandardRequest.GET_DESCRIPTOR, 0x80);
             byte endpointZeroMaxPacketSize = 8;
 
+            //InitializeHub();
+            
             //Here device is in DEFAULT state (hw did bus reset already):
 
             result = GetDescriptor(0, UsbDescriptorType.DEVICE, 0, 0, endpointZeroMaxPacketSize, out data);
             if (result.IsError)
-                throw new UsbTransferException($"When getting device descriptor: {result.TransactionResult}", result.TransactionResult);
+               throw new UsbTransferException($"When getting device descriptor: {result.TransactionResult}", result.TransactionResult);
 
             endpointZeroMaxPacketSize = data[7];
 
@@ -163,6 +167,58 @@ namespace Konamiman.RookieDrive.Usb
                 interfacesInfo);
 
             return UsbPacketResult.Ok;
+        }
+
+        void InitializeHub()
+        {
+            const byte PortNumber = 1;
+
+            // Set address and configure hub
+
+            var data = new byte[255];
+            byte endpointZeroMaxPacketSize = 8;
+
+            var result = GetDescriptor(0, UsbDescriptorType.DEVICE, 0, 0, endpointZeroMaxPacketSize, out data);
+            if (result.IsError)
+                throw new UsbTransferException($"When getting hub descriptor: {result.TransactionResult}", result.TransactionResult);
+
+            if (data[4] != 9)
+                return;
+                //throw new UsbTransferException("Not a hub!", UsbPacketResult.Ok);
+
+            endpointZeroMaxPacketSize = data[7];
+
+            var setAddressSetupPacket = new UsbSetupPacket(UsbStandardRequest.SET_ADDRESS, 0);
+            setAddressSetupPacket.wValue = UsbHubAddress;
+            result = hw.ExecuteControlTransfer(setAddressSetupPacket, null, 0, 0, endpointZeroMaxPacketSize);
+            if (result.IsError)
+                throw new UsbTransferException($"When setting hub address: {result.TransactionResult}", result.TransactionResult);
+
+            var setConfigSetupPacket = new UsbSetupPacket(UsbStandardRequest.SET_CONFIGURATION, 0);
+            setConfigSetupPacket.wValueL = 1;   //bConfigurationValue
+            result = hw.ExecuteControlTransfer(setConfigSetupPacket, null, 0, UsbHubAddress, endpointZeroMaxPacketSize);
+            if (result.IsError)
+                throw new UsbTransferException($"When setting hub configuration: {result.TransactionResult}", result.TransactionResult);
+
+            // Power port 1
+
+            var setPortFeatureSetupPacket = new UsbSetupPacket(3, 0b00100011); //SET_FEATURE for port
+            setPortFeatureSetupPacket.wValue = 8;   //PORT_POWER
+            setPortFeatureSetupPacket.wIndex = PortNumber;
+            result = hw.ExecuteControlTransfer(setPortFeatureSetupPacket, null, 0, UsbHubAddress, endpointZeroMaxPacketSize);
+            if (result.IsError)
+                throw new UsbTransferException($"When powering port: {result.TransactionResult}", result.TransactionResult);
+
+            // Reset port 1
+
+            var resetDeviceOnPortSetupPacket = new UsbSetupPacket(3, 0b00100011); //SET_FEATURE for port
+            resetDeviceOnPortSetupPacket.wValue = 4;   //PORT_RESET
+            resetDeviceOnPortSetupPacket.wIndex = PortNumber;
+            result = hw.ExecuteControlTransfer(resetDeviceOnPortSetupPacket, null, 0, UsbHubAddress, endpointZeroMaxPacketSize);
+            if (result.IsError)
+                throw new UsbTransferException($"When resetting device on port: {result.TransactionResult}", result.TransactionResult);
+
+            Thread.Sleep(100);  //Wait for reset to complete
         }
 
         //Descriptors appear concatenated as follows:

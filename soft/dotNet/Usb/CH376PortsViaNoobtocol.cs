@@ -28,6 +28,16 @@ namespace Konamiman.RookieDrive.Usb
             }
         }
 
+        public bool DeviceIsBusy
+        {
+            get
+            {
+                WriteToSerialPort(2);
+                var data = ReadFromSerialPort();
+                return (data & 0x10) == 0x10;
+            }
+        }
+
         public byte ReadData()
         {
             WriteToSerialPort(4);

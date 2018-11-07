@@ -6,6 +6,8 @@
 
         bool IntIsActive { get; }
 
+        bool DeviceIsBusy { get; }
+
         void WriteData(byte data);
 
         byte ReadData();
