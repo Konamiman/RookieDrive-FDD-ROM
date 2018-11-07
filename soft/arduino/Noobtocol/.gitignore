@@ -2,3 +2,8 @@ __vm/
 .vs/
 *.user
 *.filters
+*.elf
+*.hex
+*.o
+*.d
+*.buildinfo

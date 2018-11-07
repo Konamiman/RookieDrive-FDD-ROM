@@ -84,6 +84,15 @@ void loop() {
 			WriteByteToSerial(data);
 		}
 		break;
+	case 7: //Write multiple data
+		length = ReadByteFromSerial();
+		if (length == 0) length = 256;
+		for (i = 0; i < length; i++)
+		{
+			data = ReadByteFromSerial();
+			CH_WriteData(data);
+		}
+		break;
 	default:
 		while (Serial.available() >= 0) Serial.read();
 	}
