@@ -15,6 +15,14 @@ The protocol is as follows:
 
 - To read from the data port:
   Host sends 4, then reads the data byte.
+
+- To read a block of bytes from the data port:
+  Host sends 6, then reads block size (0 means 256),
+  then reads that many bytes.
+
+- To write a block of bytes to the data port:
+  Host sends 7, then the block size (0 means 256),
+  then that many bytes.
 */
 
 /*
