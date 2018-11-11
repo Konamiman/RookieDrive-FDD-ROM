@@ -6,7 +6,7 @@ This project implements a standard MSX-DOS 1 DiskROM that allows using standard 
 
 ## Compiling
 
-To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adjust the configuration flags as desired in [the config.asm file](/blob/master/MSX/config.asm) and run:
+To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adjust the configuration flags as desired in [the config.asm file](/msx/config.asm) and run:
 
     sjasm rookiefdd.asm rookiefdd.rom
 
@@ -69,9 +69,9 @@ Rookie Drive usually uses ports 20h and 21h to communicate with the USB host con
 
 It is possible to adapt this project to work with hardware other than Rookie Drive. Such hardware should have at least 32K of mapped ROM in page 1, and of course, some kind of USB host controller.
 
-Regarding the USB host controller, all the code that is specific to the CH376 lives in [the ch376.asm file](/blob/master/msx/bank1/ch376.asm), you will need to create a new file that implements the same "public" routines but adapted to the new controller. Look at the header of that file for detailed instructions.
+Regarding the USB host controller, all the code that is specific to the CH376 lives in [the ch376.asm file](/msx/bank1/ch376.asm), you will need to create a new file that implements the same "public" routines but adapted to the new controller. Look at the header of that file for detailed instructions.
 
-As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you don't need to change anything else from the existing code. If it's ASCII8, set the `USE_ASCII8_ROM_MAPPER` flag in [the config.asm file](/blob/master/MSX/config.asm) to 1. For any other mapping mechanism you will need to manually change the code, search for usages of the `ROM_BANK_SWITCH` constant for guidance.
+As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you don't need to change anything else from the existing code. If it's ASCII8, set the `USE_ASCII8_ROM_MAPPER` flag in [the config.asm file](/msx/config.asm) to 1. For any other mapping mechanism you will need to manually change the code, search for usages of the `ROM_BANK_SWITCH` constant for guidance.
 
 ## Known issues
 
