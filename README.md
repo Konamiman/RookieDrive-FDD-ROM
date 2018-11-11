@@ -65,6 +65,14 @@ If that happens, you can use the "panic button", which is the key combination **
 
 Rookie Drive usually uses ports 20h and 21h to communicate with the USB host controller hardware. However, the "alternative ports" variants use ports 22h and 23h instead. If you want to use two Rookie Drives simultaneously in the same computer (for example, one with the regular Nextor ROM and another one with this DiskROM), one of them must use the normal ports set and the other must use the alternative set.
 
+## Adapting the code to different hardware
+
+It is possible to adapt this project to work with hardware other than Rookie Drive. Such hardware should have at least 32K of mapped ROM in page 1, and of course, some kind of USB host controller.
+
+Regarding the USB host controller, all the code that is specific to the CH376 lives in [the ch376.asm file](/blob/master/msx/bank1/ch376.asm), you will need to create a new file that implements the same "public" routines but adapted to the new controller. Look at the header of that file for detailed instructions.
+
+As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you don't need to change anything else from the existing code. If it's ASCII8, set the `USE_ASCII8_ROM_MAPPER` flag in [the config.asm file](/blob/master/MSX/config.asm) to 1. For any other mapping mechanism you will need to manually change the code, search for usages of the `ROM_BANK_SWITCH` constant for guidance.
+
 ## Known issues
 
 This DiskROM doesn't work on those MSX computers which have power source that is too "weak" to properly power USB floppy disk drives. This might be solved in a future version by adding support for self-powered USB hubs.

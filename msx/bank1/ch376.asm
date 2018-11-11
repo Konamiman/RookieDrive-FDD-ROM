@@ -87,9 +87,13 @@ CH_ST_RET_ABORT: equ 5Fh
 
 
 ; -----------------------------------------------------------------------------
+; Mandatory routines
+; -----------------------------------------------------------------------------   
+
+; -----------------------------------------------------------------------------
 ; HW_TEST: Check if the USB host controller hardware is operational
 ; -----------------------------------------------------------------------------
-; Output: Cy = 0 is hardware is operational, 1 if it's not
+; Output: Cy = 0 if hardware is operational, 1 if it's not
 
 HW_TEST:
     ld a,34h
@@ -452,7 +456,184 @@ _CH_DATA_OUT_DONE_2:
 
 
 ; -----------------------------------------------------------------------------
-; Auxiliary routines
+; HW_BUS_RESET: Performs a USB bus reset.
+;
+; This needs to run when a device connection is detected.
+; -----------------------------------------------------------------------------
+; Output: A  = 1
+;         Cy = 1 on error
+
+HW_BUS_RESET:
+    ld a,7
+    call CH_SET_USB_MODE
+    ld a,1
+    ret c
+
+    if USING_ARDUINO_BOARD = 0
+    ld bc,150
+    call CH_DELAY
+    endif
+
+    ld a,6
+    call CH_SET_USB_MODE
+
+    ld a,1
+    ret c
+
+    xor a
+    inc a
+    ret
+
+    ;Input: BC = Delay duration in units of 0.1ms
+CH_DELAY:
+    ld a,CH_CMD_DELAY_100US
+    out (CH_COMMAND_PORT),a
+_CH_DELAY_LOOP:
+    in a,(CH_DATA_PORT)
+    or a
+    jr z,_CH_DELAY_LOOP 
+    dec bc
+    ld a,b
+    or c
+    jr nz,CH_DELAY
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Optional shortcut routines
+; -----------------------------------------------------------------------------    
+
+; -----------------------------------------------------------------------------
+; HW_GET_DEV_DESCR and HW_GET_CONFIG_DESCR
+;
+; Exectute the standard GET_DESCRIPTOR USB request
+; to obtain the device descriptor or the configuration descriptor.
+; -----------------------------------------------------------------------------
+; Input:  DE = Address where the descriptor is to be read
+;         A  = Device address
+; Output: A  = USB error code
+
+    if HW_IMPL_GET_DEV_DESCR = 1
+    
+HW_GET_DEV_DESCR:
+    ld b,1
+    jr CH_GET_DESCR
+
+    endif
+
+    if HW_IMPL_GET_CONFIG_DESCR = 1
+
+HW_GET_CONFIG_DESCR:
+    ld b,2
+    jr CH_GET_DESCR
+
+    endif
+
+    if HW_IMPL_GET_DEV_DESCR = 1 or HW_IMPL_GET_CONFIG_DESCR = 1
+
+CH_GET_DESCR:
+    push bc
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    
+    ld a,CH_CMD_GET_DESCR
+    out (CH_COMMAND_PORT),a
+    pop af
+    out (CH_DATA_PORT),a
+
+    push de
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop hl
+    or a
+    ret nz
+
+    call CH_READ_DATA
+    ld b,0
+    xor a
+    ret
+
+    endif
+
+
+; -----------------------------------------------------------------------------
+; HW_SET_ADDRESS
+;
+; Exectute the standard SET_CONFIGURATION USB request.
+; -----------------------------------------------------------------------------
+; Input: A = Device address
+;        B = Configuration number to assign
+
+    if HW_IMPL_SET_CONFIG = 1
+
+    ;In: A=Address, B=Config number
+HW_SET_CONFIG:
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    ld a,CH_CMD_SET_CONFIG
+    out (CH_COMMAND_PORT),a
+    ld a,b
+    out (CH_DATA_PORT),a
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    ret
+
+    endif
+
+
+; -----------------------------------------------------------------------------
+; HW_SET_ADDRESS
+;
+; Exectute the standard SET_ADDRESS USB request.
+; -----------------------------------------------------------------------------
+; Input: A = Adress to assign
+
+    if HW_IMPL_SET_ADDRESS = 1
+
+HW_SET_ADDRESS:
+    push af
+    xor a
+    call CH_SET_TARGET_DEVICE_ADDRESS
+    ld a,CH_CMD_SET_ADDRESS
+    out (CH_COMMAND_PORT),a
+    pop af
+    out (CH_DATA_PORT),a
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    ret
+
+    endif    
+
+
+; -----------------------------------------------------------------------------
+; HW_CONFIGURE_NAK_RETRY
+; -----------------------------------------------------------------------------
+; Input: Cy = 0 to retry for a limited time when the device returns NAK
+;               (this is the default)
+;             1 to retry indefinitely (or for a long time) 
+;               when the device returns NAK 
+
+HW_CONFIGURE_NAK_RETRY:
+    ld a,0FFh
+    jr nc,_HW_CONFIGURE_NAK_RETRY_2
+    ld a,0BFh
+_HW_CONFIGURE_NAK_RETRY_2:
+    push af
+    ld a,CH_CMD_SET_RETRY
+    out (CH_COMMAND_PORT),a
+    ld a,25h    ;Fixed value, required by CH376
+    out (CH_DATA_PORT),a
+
+    ;Bits 7 and 6:
+    ;  0x: Don't retry NAKs
+    ;  10: Retry NAKs indefinitely (default)
+    ;  11: Retry NAKs for 3s
+    ;Bits 5-0: Number of retries after device timeout
+    ;Default after reset and SET_USB_MODE is 8Fh
+    pop af
+    out (CH_DATA_PORT),a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Auxiliary "private" routines
 ; -----------------------------------------------------------------------------
 
 ; --------------------------------------
@@ -578,50 +759,6 @@ CH_DO_SET_NOSOF_MODE:
     call CH_SET_USB_MODE
 
     ld a,-1
-    ret
-
-
-; --------------------------------------
-; HW_BUS_RESET: Performs a USB bus reset, then sets USB host mode with SOF
-;
-; This needs to run when a device connection is detected
-;
-; Output: A  = 1
-;         Cy = 1 on error
-
-HW_BUS_RESET:
-    ld a,7
-    call CH_SET_USB_MODE
-    ld a,1
-    ret c
-
-    if USING_ARDUINO_BOARD = 0
-    ld bc,150
-    call CH_DELAY
-    endif
-
-    ld a,6
-    call CH_SET_USB_MODE
-
-    ld a,1
-    ret c
-
-    xor a
-    inc a
-    ret
-
-    ;Input: BC = Delay duration in units of 0.1ms
-CH_DELAY:
-    ld a,CH_CMD_DELAY_100US
-    out (CH_COMMAND_PORT),a
-_CH_DELAY_LOOP:
-    in a,(CH_DATA_PORT)
-    or a
-    jr z,_CH_DELAY_LOOP 
-    dec bc
-    ld a,b
-    or c
-    jr nz,CH_DELAY
     ret
 
 
@@ -759,135 +896,3 @@ CH_WRITE_DATA:
     otir
     ret
 
-
-; -----------------------------------------------------------------------------
-; Optional shortcut routines
-; -----------------------------------------------------------------------------    
-
-; -----------------------------------------------------------------------------
-; HW_GET_DEV_DESCR and HW_GET_CONFIG_DESCR
-;
-; Exectute the standard GET_DESCRIPTOR USB request
-; to obtain the device descriptor or the configuration descriptor.
-; -----------------------------------------------------------------------------
-; Input:  DE = Address where the descriptor is to be read
-;         A  = Device address
-; Output: A  = USB error code
-
-    if HW_IMPL_GET_DEV_DESCR = 1
-    
-HW_GET_DEV_DESCR:
-    ld b,1
-    jr CH_GET_DESCR
-
-    endif
-
-    if HW_IMPL_GET_CONFIG_DESCR = 1
-
-HW_GET_CONFIG_DESCR:
-    ld b,2
-    jr CH_GET_DESCR
-
-    endif
-
-    if HW_IMPL_GET_DEV_DESCR = 1 or HW_IMPL_GET_CONFIG_DESCR = 1
-
-CH_GET_DESCR:
-    push bc
-    call CH_SET_TARGET_DEVICE_ADDRESS
-    
-    ld a,CH_CMD_GET_DESCR
-    out (CH_COMMAND_PORT),a
-    pop af
-    out (CH_DATA_PORT),a
-
-    push de
-    call CH_WAIT_INT_AND_GET_RESULT
-    pop hl
-    or a
-    ret nz
-
-    call CH_READ_DATA
-    ld b,0
-    xor a
-    ret
-
-    endif
-
-
-; -----------------------------------------------------------------------------
-; HW_SET_ADDRESS
-;
-; Exectute the standard SET_CONFIGURATION USB request.
-; -----------------------------------------------------------------------------
-; Input: A = Device address
-;        B = Configuration number to assign
-
-    if HW_IMPL_SET_CONFIG = 1
-
-    ;In: A=Address, B=Config number
-HW_SET_CONFIG:
-    call CH_SET_TARGET_DEVICE_ADDRESS
-    ld a,CH_CMD_SET_CONFIG
-    out (CH_COMMAND_PORT),a
-    ld a,b
-    out (CH_DATA_PORT),a
-
-    call CH_WAIT_INT_AND_GET_RESULT
-    ret
-
-    endif
-
-
-; -----------------------------------------------------------------------------
-; HW_SET_ADDRESS
-;
-; Exectute the standard SET_ADDRESS USB request.
-; -----------------------------------------------------------------------------
-; Input: A = Adress to assign
-
-    if HW_IMPL_SET_ADDRESS = 1
-
-HW_SET_ADDRESS:
-    push af
-    xor a
-    call CH_SET_TARGET_DEVICE_ADDRESS
-    ld a,CH_CMD_SET_ADDRESS
-    out (CH_COMMAND_PORT),a
-    pop af
-    out (CH_DATA_PORT),a
-
-    call CH_WAIT_INT_AND_GET_RESULT
-    ret
-
-    endif    
-
-
-; -----------------------------------------------------------------------------
-; HW_CONFIGURE_NAK_RETRY
-; -----------------------------------------------------------------------------
-; Input: Cy = 0 to retry for a limited time when the device returns NAK
-;               (this is the default)
-;             1 to retry indefinitely (or for a long time) 
-;               when the device returns NAK 
-
-HW_CONFIGURE_NAK_RETRY:
-    ld a,0FFh
-    jr nc,_HW_CONFIGURE_NAK_RETRY_2
-    ld a,0BFh
-_HW_CONFIGURE_NAK_RETRY_2:
-    push af
-    ld a,CH_CMD_SET_RETRY
-    out (CH_COMMAND_PORT),a
-    ld a,25h    ;Fixed value, required by CH376
-    out (CH_DATA_PORT),a
-
-    ;Bits 7 and 6:
-    ;  0x: Don't retry NAKs
-    ;  10: Retry NAKs indefinitely (default)
-    ;  11: Retry NAKs for 3s
-    ;Bits 5-0: Number of retries after device timeout
-    ;Default after reset and SET_USB_MODE is 8Fh
-    pop af
-    out (CH_DATA_PORT),a
-    ret
