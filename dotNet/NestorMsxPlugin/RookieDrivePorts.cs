@@ -53,7 +53,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
             cpu = context.Cpu;
             slots = context.SlotsSystem;
             context.Cpu.BeforeInstructionFetch += Cpu_BeforeInstructionFetch;
-            ParseSymbols(@"C:\code\fun\RookieDrive\soft\msx\fdd\.sym");
+            ParseSymbols(@"C:\code\fun\RookieDrive\msx\.sym");
             addressesToLog = symbolsToLog.ToDictionary(s => symbolsByName[s], s => s);
             //cpu.BeforeInstructionExecution += Cpu_BeforeInstructionExecution;
         }

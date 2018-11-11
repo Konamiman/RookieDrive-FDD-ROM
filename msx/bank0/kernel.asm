@@ -4372,7 +4372,7 @@ A57D6:	ld	(hl),0C9H
 	ld	(XF365+0),a
 	ld	(XF365+1),hl		; read primairy slotregister entry
 	ld	a,006H
-    if INVERT_CTRL_KEY
+    if INVERT_CTRL_KEY = 1
     call    SNSMAT_AND_INVERT_CTRL
     else
 	call	SNSMAT
@@ -8646,7 +8646,7 @@ A7397:	call	XF36B			; enable ram on page 1
 ; Patches and moved code
 ; -----------------------------------------------------------------------------
 
-    if INVERT_CTRL_KEY
+    if INVERT_CTRL_KEY = 1
 SNSMAT_AND_INVERT_CTRL:
     call SNSMAT
     xor 2

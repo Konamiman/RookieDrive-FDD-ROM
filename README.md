@@ -28,7 +28,9 @@ If you use one of the "exclusive" variants of the ROM, all other MSX-DOS kernels
 
 ### CTRL key
 
-As any other standard MSX floppy disk controller, this ROM implements the "phantom drive" feature by allocating two drive letters for the FDD and prompting the user to change the disk and press any key when appropriate. However, if you use one of the "inverted CTRL" variants of the ROM, this behavior is inverted: you get one drive by default and two if you keep pressed CTRL at boot time (note that this won't apply to other MSX-DOS kernels, which will check CTRL by themselves).
+As any other standard MSX floppy disk controller, this ROM implements the "phantom drive" feature by allocating two drive letters for the FDD and prompting the user to change the disk and press any key when appropriate. However, if you use one of the "inverted CTRL" variants of the ROM, this behavior is inverted: you get one drive by default and two if you keep pressed CTRL at boot time.
+
+Unfortunately this won't work if there are any other MSX-DOS kernels in the system and any of them acts as the primary DiskROM. However this is unlikely to happen if the only other DiskROM in your system is the one for the internal floppy disk drive (which probably will have slot number 3 or 3-x, as opposed to slot number 1 or 2 for Rookie Drive).
 
 If you plan to use this DiskROM primarily to load games, the recommended variant is "exclusive" + "inverted CTRL", as it's the one that leaves the maximum amount of free memory without having to press any key at boot.
 
@@ -76,6 +78,8 @@ As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you do
 ## Known issues
 
 This DiskROM doesn't work on those MSX computers which have power source that is too "weak" to properly power USB floppy disk drives. This might be solved in a future version by adding support for self-powered USB hubs.
+
+Some devices will fail to initialize with "Timeout" error when the computer is reset. The workaround is to power off and on the computer, or unplug and plug again the device; sometimes trying CALL USBRESET a few times will work as well. 
 
 ## Disclaimer!
 
