@@ -48,6 +48,7 @@ DEFDPB:
 
     org 4000h
 
+    include "bank1/header.asm"
     include "bank1/ch376.asm" ;USB host hardware dependant code
     include "bank1/inihrd_inienv.asm"
     include "bank1/verbose_reset.asm"
