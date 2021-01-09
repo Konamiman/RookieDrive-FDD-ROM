@@ -26,6 +26,43 @@ namespace Konamiman.RookieDrive.Sandbox
 
         static void _Main(string[] args)
         {
+            var hw = new CH376UsbHostHardware(UsbServiceProvider.GetCH376Ports());
+            hw.HardwareReset();
+            var diskName = hw.InitDisk();
+            if (diskName == null)
+                Console.WriteLine("*** No storage device detected");
+            else
+                Console.WriteLine("Storage device detected: " + diskName);
+
+            dynamic diskTypeAndCapacity = hw.GetDiskTypeAndCapacity();
+            Console.WriteLine($"Total size: {diskTypeAndCapacity.totalSizeMb} MB");
+            Console.WriteLine($"Free size:  {diskTypeAndCapacity.freeSizeMb} MB");
+            Console.WriteLine($"Filesystem: {diskTypeAndCapacity.filesystem}");
+            Console.WriteLine();
+
+            hw.InitFilesystem();
+            var files = hw.EnumerateFiles("/");
+            if(files.Length == 0)
+            {
+                Console.WriteLine("*** No files found");
+            }
+            else
+            {
+                Console.WriteLine("Files found:");
+                foreach (var name in files)
+                    Console.WriteLine(name);
+
+                Console.WriteLine();
+                Console.WriteLine("Files found in DSK:");
+                files = hw.EnumerateFiles("DSK");
+                foreach (var name in files)
+                    Console.WriteLine(name);
+            }
+            Console.ReadKey();
+            return;
+
+            /////
+
             var deviceWasConnected = false;
             usb = new UsbHost(new CH376UsbHostHardware(UsbServiceProvider.GetCH376Ports("90.173.150.35", 1288)));
 

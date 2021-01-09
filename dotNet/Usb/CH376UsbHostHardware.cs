@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Threading;
 using System.Linq;
+using System.Text;
+using System.Dynamic;
+using System.Collections.Generic;
 
 namespace Konamiman.RookieDrive.Usb
 {
@@ -26,6 +29,15 @@ namespace Konamiman.RookieDrive.Usb
         const byte CMD_CLR_STALL = 0x41;
         const byte CMD_RET_SUCCESS = 0x51;
         const byte CMD_RET_ABORT = 0x5F;
+
+        const byte CMD_DISK_CONNECT = 0x30;
+        const byte CMD_DISK_MOUNT = 0x31;
+        const byte CMD_DISK_CAPACITY = 0x3E;
+        const byte CMD_DISK_QUERY = 0x3F;
+        const byte CMD_SET_FILE_NAME = 0x2F;
+        const byte CMD_FILE_OPEN = 0x32;
+        const byte CMD_FILE_ENUM_GO = 0x33;
+        const byte CMD_FILE_CLOSE = 0x36;
 
         private readonly ICH376Ports ch;
         private static readonly byte[] noData = new byte[0];
@@ -233,6 +245,10 @@ namespace Konamiman.RookieDrive.Usb
             if (result2 == 0x20)
                 return UsbPacketResult.Timeout;
 
+            if(result >= 0x1D && Enum.IsDefined(typeof(UsbPacketResult), (int)result)) {
+                return (UsbPacketResult)result;
+            }
+
             throw new Exception($"Unexpected value from GET_STATUS: 0x{result:X}");
         }
 
@@ -320,6 +336,94 @@ namespace Konamiman.RookieDrive.Usb
             ch.WriteData(endpointNumber);
             var result = WaitAndGetResult();
             return new UsbTransferResult(result);
+        }
+
+        public string InitDisk()
+        {
+            ch.WriteCommand(CMD_DISK_CONNECT);
+            var result = WaitAndGetResult();
+            if (result != UsbPacketResult.Ok)
+                return null;
+            
+            BusResetAndSetHostWithSofMode();
+            ch.WriteCommand(CMD_DISK_MOUNT);
+            result = WaitAndGetResult();
+            if (result != UsbPacketResult.Ok)
+                return null;
+
+            var data = new byte[36];
+            ReadUsbData(data, 0);
+            return Encoding.ASCII.GetString(data.Skip(8).ToArray());
+        }
+
+        public object GetDiskTypeAndCapacity()
+        {
+            ch.WriteCommand(CMD_DISK_QUERY);
+            var result = WaitAndGetResult();
+            if (result != UsbPacketResult.Ok)
+                return null;
+
+            var data = new byte[9];
+            ReadUsbData(data, 0);
+            var totalSectorsCount = BitConverter.ToInt32(data, 0);
+            var freeSectorsCount = BitConverter.ToInt32(data, 4);
+            var filesystemTypeByte = data[8];
+
+            dynamic r = new ExpandoObject();
+            r.totalSizeMb = totalSectorsCount / 2048;
+            r.freeSizeMb = freeSectorsCount / 2048;
+            r.filesystem =
+                    filesystemTypeByte == 1 ? "FAT12" :
+                    filesystemTypeByte == 2 ? "FAT16" :
+                    filesystemTypeByte == 3 ? "FAT32" :
+                    $"Unknown ({filesystemTypeByte})";
+
+            return r;
+        }
+
+        public void InitFilesystem()
+        {
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteData(0);
+            ch.WriteCommand(CMD_FILE_OPEN);
+        }
+
+        public string[] EnumerateFiles(string searchPath = "/")
+        {
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes(searchPath + "\0"));
+            ch.WriteCommand(CMD_FILE_OPEN);
+            var result = WaitAndGetResult();
+            if (result != UsbPacketResult.ERR_OPEN_DIR)
+                return new[] { $"*** Error opening directory: {result}" };
+
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes("*\0"));
+            ch.WriteCommand(CMD_FILE_OPEN);
+
+            result = WaitAndGetResult();
+            var data = new byte[32];
+            var names = new List<string>();
+            while (result == UsbPacketResult.USB_INT_DISK_READ)
+            {
+                ReadUsbData(data);
+                
+                var name = Encoding.ASCII.GetString(data, 0, 8).Trim();
+                var ext = Encoding.ASCII.GetString(data, 8, 3).Trim();
+                if (ext != "")
+                    name = $"{name}.{ext}";
+                if ((data[11] & 0x10) == 0x10)
+                    name += "/";
+
+                names.Add(name);
+
+                ch.WriteCommand(CMD_FILE_ENUM_GO);
+                result = WaitAndGetResult();
+            }
+
+            //ch.WriteCommand(CMD_FILE_CLOSE);
+            //ch.WriteData(0);
+            return names.ToArray();
         }
     }
 }
