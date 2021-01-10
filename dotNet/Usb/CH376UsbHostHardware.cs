@@ -38,6 +38,9 @@ namespace Konamiman.RookieDrive.Usb
         const byte CMD_FILE_OPEN = 0x32;
         const byte CMD_FILE_ENUM_GO = 0x33;
         const byte CMD_FILE_CLOSE = 0x36;
+        const byte CMD_BYTE_LOCATE = 0x39;
+        const byte CMD_BYTE_READ = 0x3A;
+        const byte CMD_BYTE_RD_GO = 0x3B;
 
         private readonly ICH376Ports ch;
         private static readonly byte[] noData = new byte[0];
@@ -421,9 +424,44 @@ namespace Konamiman.RookieDrive.Usb
                 result = WaitAndGetResult();
             }
 
-            //ch.WriteCommand(CMD_FILE_CLOSE);
-            //ch.WriteData(0);
             return names.ToArray();
+        }
+
+        public string ReadFileContents(string filename)
+        {
+            int count;
+            UsbPacketResult result;
+            var data = new byte[65535];
+
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes(filename + "\0"));
+            ch.WriteCommand(CMD_FILE_OPEN);
+            result = WaitAndGetResult();
+            if (result != UsbPacketResult.Ok)
+                return "*** Error opening file: " + result.ToString();
+
+            var sb = new StringBuilder();
+
+            while (true)
+            {
+                ch.WriteCommand(CMD_BYTE_READ);
+                ch.WriteData(0xFF);
+                ch.WriteData(0xFF); //Request 65535 bytes
+                result = WaitAndGetResult();
+                if (result == UsbPacketResult.Ok)
+                    return sb.ToString();
+                else if (result != UsbPacketResult.USB_INT_DISK_READ)
+                    return "*** Error reading file: " + result.ToString();
+
+                do
+                {
+                    count = ReadUsbData(data);
+                    sb.Append(Encoding.ASCII.GetString(data, 0, count));
+                    ch.WriteCommand(CMD_BYTE_RD_GO);
+                    result = WaitAndGetResult();
+                }
+                while (result == UsbPacketResult.USB_INT_DISK_READ);
+            }
         }
     }
 }

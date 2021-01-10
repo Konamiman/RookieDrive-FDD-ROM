@@ -57,6 +57,10 @@ namespace Konamiman.RookieDrive.Sandbox
                 files = hw.EnumerateFiles("DSK");
                 foreach (var name in files)
                     Console.WriteLine(name);
+
+                Console.WriteLine();
+                Console.WriteLine("Contents of DSK/DRIVER.ASM:");
+                Console.Write(hw.ReadFileContents("DRIVER.ASM"));
             }
             Console.ReadKey();
             return;
