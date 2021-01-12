@@ -29,8 +29,11 @@ namespace Konamiman.RookieDrive.Sandbox
             var hw = new CH376UsbHostHardware(UsbServiceProvider.GetCH376Ports());
             hw.HardwareReset();
             var diskName = hw.InitDisk();
-            if (diskName == null)
-                Console.WriteLine("*** No storage device detected");
+            if (diskName[0] == '*')
+            {
+                Console.WriteLine(diskName);
+                return;
+            }
             else
                 Console.WriteLine("Storage device detected: " + diskName);
 

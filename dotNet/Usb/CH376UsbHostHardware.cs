@@ -30,6 +30,7 @@ namespace Konamiman.RookieDrive.Usb
         const byte CMD_RET_SUCCESS = 0x51;
         const byte CMD_RET_ABORT = 0x5F;
 
+        const byte CMD_TEST_CONNECT = 0x16;
         const byte CMD_DISK_CONNECT = 0x30;
         const byte CMD_DISK_MOUNT = 0x31;
         const byte CMD_DISK_CAPACITY = 0x3E;
@@ -248,7 +249,7 @@ namespace Konamiman.RookieDrive.Usb
             if (result2 == 0x20)
                 return UsbPacketResult.Timeout;
 
-            if(result >= 0x1D && Enum.IsDefined(typeof(UsbPacketResult), (int)result)) {
+            if(result >= 0x14 && Enum.IsDefined(typeof(UsbPacketResult), (int)result)) {
                 return (UsbPacketResult)result;
             }
 
@@ -343,16 +344,21 @@ namespace Konamiman.RookieDrive.Usb
 
         public string InitDisk()
         {
-            ch.WriteCommand(CMD_DISK_CONNECT);
-            var result = WaitAndGetResult();
-            if (result != UsbPacketResult.Ok)
-                return null;
+            ch.WriteCommand(CMD_TEST_CONNECT);
+            byte status;
+            do
+            {
+                status = ch.ReadStatus();
+            } while (status == 0);
+            var result = (UsbPacketResult)(status & 0x7F); // WaitAndGetResult();
+            if (result == UsbPacketResult.NoDeviceConnected)
+                return "*** No device connected";
             
             BusResetAndSetHostWithSofMode();
             ch.WriteCommand(CMD_DISK_MOUNT);
             result = WaitAndGetResult();
             if (result != UsbPacketResult.Ok)
-                return null;
+                return "*** No proper storage device connected";
 
             var data = new byte[36];
             ReadUsbData(data, 0);
