@@ -9,8 +9,6 @@
 ; because we need to setup the work area during reset, but work area
 ; is zeroed by kernel between INIHRD and INIENV.
 
-INITXT: equ 006Ch
-
 
 ; -----------------------------------------------------------------------------
 ; INIHRD
@@ -48,4 +46,9 @@ INIENV_IMPL:
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
+
+    call HWF_MOUNT_DISK
+    ret c
+
+    call DO_BOOT_MENU
     ret

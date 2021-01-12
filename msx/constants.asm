@@ -1,0 +1,6 @@
+INITXT: equ 006Ch
+CHPUT:  equ 00A2h
+BREAKX: equ 00B7h
+POSIT:  equ 00C6h
+
+LINL40: equ 0F3AEH

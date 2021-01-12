@@ -96,6 +96,9 @@ CH_ST_RET_ABORT: equ 5Fh
 ; Output: Cy = 0 if hardware is operational, 1 if it's not
 
 HW_TEST:
+    or a
+    ret ;!!!
+
     ld a,34h
     call _HW_TEST_DO
     scf
@@ -496,6 +499,67 @@ _CH_DELAY_LOOP:
     ld a,b
     or c
     jr nz,CH_DELAY
+    ret
+
+
+; -----------------------------------------------------------------------------
+; File management routines
+; -----------------------------------------------------------------------------    
+
+; -----------------------------------------------------------------------------
+; HWF_MOUNT_DISK: Mounts a storage device if present.
+;
+; On success it also opens the root directory
+; -----------------------------------------------------------------------------
+; Input:  HL = address for the name of the device found
+; Output: Cy = 0: ok
+;              1: error, no device present or it's not a storage device
+
+HWF_MOUNT_DISK:
+    ex de,hl
+    ld hl,FAKE_DEV_NAME
+    ld bc,24
+    ldir
+    xor a
+    ld (de),a
+    ret
+
+FAKE_DEV_NAME:
+    db "TheStorageThing     0.05"
+
+; -----------------------------------------------------------------------------
+; HWF_CHANGE_DIR: Enter a directory from the current one
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of directory name, relative to current,
+;              can be ".." to go back to previous
+; Output: A  = 0: ok
+;              1: directory not found
+;              2: other error (e.g. no device found)
+
+HWF_CHANGE_DIR:
+    xor a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_ENUM_FILES: Enumerate files and directories in the current directory
+;
+; Files/directories whose first character is not a letter or a digit
+; will be skipped.
+;
+; The name of each files/directory will be put at the specified address,
+; sequentially and with no separators, as a fixed 11 bytes string in the
+; same format as in the directory entry (e.g. "FILE    EXT"); after the last
+; entry a 0 byte will be placed.
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of buffer to get file info into
+;         BC = Maximum number of files/directories to enumerate
+; Output: Cy = 0: ok
+;              1: error, no device present or it's not a storage device
+
+HWF_ENUM_FILES:
+    xor a
+    ld (hl),a
     ret
 
 

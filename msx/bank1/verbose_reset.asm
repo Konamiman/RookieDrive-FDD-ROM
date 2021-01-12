@@ -11,6 +11,32 @@ VERBOSE_RESET:
     ld hl,NOHARD_S
     jp c,PRINT
 
+    ld hl,0C000h
+    call HWF_MOUNT_DISK
+    jr c,_HW_RESET_NO_STOR
+
+    ld hl,STOR_FOUND_S
+    call PRINT
+    ld hl,0C000h
+    ld b,0
+    ;Print the device name, collapsing multiple spaces to a single one
+_HW_RESET_PRINT:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,_HW_RESET_PRINT_END
+    cp ' '
+    jr nz,_HW_RESET_PRINT_GO
+    cp b
+    jr z,_HW_RESET_PRINT
+_HW_RESET_PRINT_GO:
+    ld b,a
+    call CHPUT
+    jr _HW_RESET_PRINT
+_HW_RESET_PRINT_END:
+    ret
+
+_HW_RESET_NO_STOR:
     ld b,5
 _HW_RESET_TRY:
     push bc
@@ -242,3 +268,5 @@ DEVERR_S:
 ERR_INQUIRY_S:
     db  "ERROR querying the device name: ",0
 
+STOR_FOUND_S:
+    db "USB storage device found:",13,10,0

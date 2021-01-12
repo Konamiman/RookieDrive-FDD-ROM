@@ -69,6 +69,3 @@ USE_ASCII8_ROM_MAPPER: equ 0
 ;Note that these refer to 16K banks, even in the case of using the ASCII8 mapper.
 ROM_BANK_0: equ 0
 ROM_BANK_1: equ 1
-
-
-
