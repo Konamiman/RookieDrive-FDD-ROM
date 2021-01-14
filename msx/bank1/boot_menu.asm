@@ -21,6 +21,13 @@ DO_BOOT_MENU:
     ld hl,BM_F1_HELP
     call BM_PRINT_STATUS
 
+    ld hl,0C000h
+    ld bc,25
+    call HWF_ENUM_FILES
+
+    ld hl,0C000h
+    call BM_PRINT_FILENAMES_PAGE
+
 ;--- Main loop
 
 BOOT_MENU_LOOP:
@@ -70,17 +77,106 @@ _BM_HELP_LOOP2:
 
     call BM_CLEAR_INFO_AREA
 
+    ld hl,0C000h
+    call BM_PRINT_FILENAMES_PAGE
+
     ld hl,BM_F1_HELP
     call BM_PRINT_STATUS
 
     ret
 
+
+;--- Print a screen full of filenames
+;    Input: HL = Pointer to first filename
+
+BM_PRINT_FILENAMES_PAGE:
+    call BM_CLEAR_INFO_AREA
+
+    ld b,2  ;X coordinate
+_BM_PRINT_FILENAMES_COLUMN:
+    ld c,3  ;Y coordinate
+
+    push hl
+    ld h,b
+    ld l,c
+    call POSIT
+    pop hl
+
+_BM_PRINT_FILENAMES_COLUMN_LOOP:
+    ld a,(hl)
+    or a
+    ret z   ;End of the files list reached
+
+    push bc
+    call BM_PRINT_FILENAME
+    pop bc
+    inc c
+    ld a,c
+    cp 23
+    jr nc,_BM_PRINT_FILENAMES_COLUMN_END
+
+    push hl
+    ld h,b
+    ld l,c
+    call POSIT
+    pop hl
+
+    jr _BM_PRINT_FILENAMES_COLUMN_LOOP
+
+_BM_PRINT_FILENAMES_COLUMN_END:
+    ld a,b
+    add 13
+    ld b,a
+    cp 37
+    jr c,_BM_PRINT_FILENAMES_COLUMN
+
+    ret
+
+
+;--- Print a fixed 11 chars file name in the current position
+;    Input:  HL = Filename
+;    Output: HL = Past the filename
+
+BM_PRINT_FILENAME:
+    ld b,8
+_BM_PRINT_FILENAME_MAIN:
+    ld a,(hl)
+    inc hl
+    cp ' '
+    call nz,CHPUT
+    djnz _BM_PRINT_FILENAME_MAIN
+
+    ld a,(hl)
+    cp ' '
+    ld b,3
+    jr z,_BM_PRINT_FILENAME_EXT
+    ld a,'.'
+    call CHPUT
+_BM_PRINT_FILENAME_EXT:
+    ld a,(hl)
+    inc hl
+    and 7Fh
+    cp ' '
+    call nz,CHPUT
+    djnz _BM_PRINT_FILENAME_EXT
+
+    dec hl
+    ld a,(hl)
+    inc hl
+    and 80h
+    ret z
+    ld a,'/'
+    jp CHPUT
+
+
 ;--- Clear the central information area
 
 BM_CLEAR_INFO_AREA:
+    push hl
     ld h,1
     ld l,3
     call POSIT
+    pop hl
     ld b,20
 _BM_CLEAR_INFO_AREA_LOOP:
     ld a,27

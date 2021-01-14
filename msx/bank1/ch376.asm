@@ -558,10 +558,86 @@ HWF_CHANGE_DIR:
 ;              1: error, no device present or it's not a storage device
 
 HWF_ENUM_FILES:
+    ld de,0
+    push hl
+    pop ix
+_HWF_ENUM_FILES_LOOP:
+    push bc
+    push de
+
+    push ix
+    pop de
+
+    ld hl,FILE_S
+    ld bc,3
+    ldir
+
+    pop hl
+    push hl
+    call Num2Hex
+    
+    ld a,' '
+    ld (de),a
+    inc de
+
+    ld hl,EXT_S
+    ld bc,3
+    ldir
+
+    push de
+    pop ix
+
+    pop de
+    inc de
+
+    ld a,e
+    and 15
+    jr nz,_HWF_ENUM_FILES_NODIR
+    ld (ix-4),' '
+    ld (ix-3),' '
+    ld (ix-2),' '
+    ld (ix-1),128
+_HWF_ENUM_FILES_NODIR:
+
+    pop bc
+    dec bc
+    ld a,b
+    or c
+    jr nz,_HWF_ENUM_FILES_LOOP
+
     xor a
-    ld (hl),a
+    ld (ix),a
     ret
 
+FILE_S: db "FIL"
+EXT_S: db "EXT"
+
+;Input: HL = number to convert
+;       DE = location of ASCII string
+Num2Hex:
+	ld	a,h
+	call	Num1
+	ld	a,h
+	call	Num2
+	ld	a,l
+	call	Num1
+	ld	a,l
+	jr	Num2
+
+Num1:
+	rra
+	rra
+	rra
+	rra
+Num2:
+	or	0F0h
+	daa
+	add	a,0A0h
+	adc	a,040h
+
+	ld	(de),a
+	inc	de
+	ret
 
 ; -----------------------------------------------------------------------------
 ; Optional shortcut routines
