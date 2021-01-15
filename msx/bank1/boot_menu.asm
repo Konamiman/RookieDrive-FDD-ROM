@@ -1,6 +1,21 @@
+; Rookie Drive USB FDD BIOS
+; By Konamiman, 2018
+;
+; This file contains the code for the boot menu that displays
+; a navigable list of disk image files (available only when a
+; standard USB mass storage device is plugged in).
+
 BM_FILES_BASE: equ 8000h
 
+
+; -----------------------------------------------------------------------------
+; Boot menu entry point
+; -----------------------------------------------------------------------------
+
 DO_BOOT_MENU:
+
+    ; Init screen mode, draw fixed elements
+
     ld a,40
     ld (LINL40),a
     call INITXT
@@ -19,6 +34,8 @@ DO_BOOT_MENU:
     call POSIT
     ld a,"/"
     call CHPUT
+
+    ; Enumerate files, initialize paging
 
     ld hl,BM_SCANNING_DIR_S
     call BM_PRINT_STATUS
@@ -62,15 +79,23 @@ _BM_CALC_NUM_PAGES_END:
 _BM_CALC_NUM_PAGES_END_2:
     ld (BM_NUM_PAGES),a
 
+
+; -----------------------------------------------------------------------------
+; Main key scanning loop
+; -----------------------------------------------------------------------------
+
+
+;--- This entry point redraws the screen
+
 BM_ENTER_MAIN_LOOP:
     call BM_CLEAR_INFO_AREA
     call BM_PRINT_MAIN_STATUS
 
     call BM_PRINT_FILENAMES_PAGE
 
-;--- Main loop
+;--- This is the actual start of the loop
 
-BOOT_MENU_LOOP:
+_BM_MAIN_LOOP:
     halt
     call BREAKX
     ret c
@@ -82,9 +107,18 @@ BOOT_MENU_LOOP:
     bit 7,a
     jp nz,BM_UPDATE_PAGE
 
-    jr BOOT_MENU_LOOP
+    jr _BM_MAIN_LOOP
 
-;--- Help loop
+
+; -----------------------------------------------------------------------------
+; Key press handlers
+;
+; These are JP-ed in, so they must finish by JP-ing to
+; either BM_ENTER_MAIN_LOOP or _BM_MAIN_LOOP.
+; -----------------------------------------------------------------------------
+
+
+;--- Help loop, entered when F1 is pressed
 
 BM_DO_HELP:
     call BM_CLEAR_INFO_AREA
@@ -99,7 +133,7 @@ BM_DO_HELP:
     call BM_PRINT_STATUS
 
 _BM_HELP_LOOP1:
-    ;halt
+    halt
     call BM_F1_IS_PRESSED
     jr nz,_BM_HELP_LOOP1
 
@@ -115,11 +149,12 @@ _BM_HELP_LOOP1:
     call BM_PRINT_STATUS
 
 _BM_HELP_LOOP2:
-    ;halt
+    halt
     call BM_F1_IS_PRESSED
     jr nz,_BM_HELP_LOOP2
 
     jp BM_ENTER_MAIN_LOOP
+
 
 ;--- Update current page on cursor press
 ;    Input: A = pressed cursor key
@@ -134,14 +169,14 @@ BM_UPDATE_PAGE:
     jr z,_BM_PREV_10_PAGES
     dec a
     jr z,_BM_PREV_PAGE
-    jp BOOT_MENU_LOOP
+    jp _BM_MAIN_LOOP
 
 _BM_NEXT_PAGE:
     ld a,(BM_NUM_PAGES)
     ld b,a
     ld a,(BM_CUR_PAGE)
     cp b
-    jp z,BOOT_MENU_LOOP
+    jp z,_BM_MAIN_LOOP
 
     inc a
     ld (BM_CUR_PAGE),a
@@ -152,7 +187,7 @@ _BM_NEXT_10_PAGES:
     ld b,a
     ld a,(BM_CUR_PAGE)
     cp b
-    jp nc,BOOT_MENU_LOOP
+    jp nc,_BM_MAIN_LOOP
     inc b
     add 10
     cp b
@@ -166,7 +201,7 @@ _BM_NEXT_10_PAGES_GO:
 _BM_PREV_PAGE:
     ld a,(BM_CUR_PAGE)
     cp 1
-    jp z,BOOT_MENU_LOOP
+    jp z,_BM_MAIN_LOOP
 
     dec a
     ld (BM_CUR_PAGE),a
@@ -175,7 +210,7 @@ _BM_PREV_PAGE:
 _BM_PREV_10_PAGES:
     ld a,(BM_CUR_PAGE)
     cp 1
-    jp z,BOOT_MENU_LOOP
+    jp z,_BM_MAIN_LOOP
     sub 10
     jr z,_BM_PREV_10_PAGES_1
     jp p,_BM_PREV_10_PAGES_GO
@@ -186,8 +221,13 @@ _BM_PREV_10_PAGES_GO:
     ld (BM_CUR_PAGE),a
     jp BM_ENTER_MAIN_LOOP
 
-;--- Print a screen full of filenames
-;    Input: A = Page number
+
+; -----------------------------------------------------------------------------
+; Screen printing routines
+; -----------------------------------------------------------------------------
+
+
+;--- Print the filenames for the current page
 
 BM_PRINT_FILENAMES_PAGE:
     ld hl,(BM_NUM_FILES)
@@ -253,9 +293,10 @@ _BM_PRINT_FILENAMES_COLUMN_END:
     ret
 
 
-;--- Print a fixed 11 chars file name in the current position
-;    Input:  HL = Filename
-;    Output: HL = Past the filename
+;--- Print a formatted file name in the current position
+;    Input:  HL = Pointer to filename in directory entry format
+;                 (11 chars, name and extensionpadded with spaces)
+;    Output: HL = Points past the filename
 
 BM_PRINT_FILENAME:
     ld b,8
@@ -308,7 +349,9 @@ _BM_CLEAR_INFO_AREA_LOOP:
     djnz _BM_CLEAR_INFO_AREA_LOOP
     ret
 
+
 ;--- Print something in the lower status line
+;    Input: HL = Pointer to string to print
 
 BM_PRINT_STATUS:
     push hl
@@ -322,7 +365,9 @@ BM_PRINT_STATUS:
     pop hl
     jp PRINT
 
+
 ;--- Print the main lower status line
+;    ("F1=HELP" and current page number)
 
 BM_PRINT_MAIN_STATUS:
     ld hl,BM_F1_HELP
@@ -349,14 +394,55 @@ BM_PRINT_BYTE:
     ld hl,BM_BUF
     jp PRINT
 
+
+;--- Draw a horizontal line of 40 hyphens in the current cursor location
+
+BM_DRAW_LINE:
+    ld b,40
+_BM_DRAW_LINE_LOOP:
+    ld a,"-"
+    call CHPUT
+    djnz _BM_DRAW_LINE_LOOP
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Keyboard scanning routines
+; -----------------------------------------------------------------------------
+
+;--- Check if a key is pressed
+;    Input:  D = Keyboard matrix column mask, desired key set to 1
+;            E = Keyboard matrix row number
+;    Output: Z if key is pressed, NZ if not
+
+BM_KEY_CHECK:
+    ld b,d
+    ld d,0
+    ld hl,NEWKEY
+    add hl,de
+    ld a,(hl)
+    and b
+    ret nz
+
+_BM_KEY_CHECK_WAIT_RELEASE:
+    halt
+    ld a,(hl)
+    and b
+    jr z,_BM_KEY_CHECK_WAIT_RELEASE
+    xor a
+    ret
+
+
 ;--- Check if F1 is pressed
+;    Output: Z if pressed, NZ if not
 
 BM_F1_IS_PRESSED:
     ld de,2006h
     jp BM_KEY_CHECK
 
+
 ;--- Check if a cursor key is pressed
-;    Output: A=0: no
+;    Output: A=0: no cursor key is pressed
 ;              1,2,3,4: up,right,down,left
 ;            Bit 7 set if SHIFT is pressed too
 
@@ -405,85 +491,9 @@ _BM_CURSOR_WAIT_RELEASE:
     ret
 
 
-;--- Draw a horizontal line of 40 hyphens
-
-BM_DRAW_LINE:
-    ld b,40
-_BM_DRAW_LINE_LOOP:
-    ld a,"-"
-    call CHPUT
-    djnz _BM_DRAW_LINE_LOOP
-    ret
-
-;--- Check if a key is pressed
-;Input:  D=column mask, E=row number
-;Output: Z if pressed, NZ if not
-BM_KEY_CHECK:
-    ld b,d
-    ld d,0
-    ld hl,NEWKEY
-    add hl,de
-    ld a,(hl)
-    and b
-    ret nz
-
-_BM_KEY_CHECK_WAIT_RELEASE:
-    halt
-    ld a,(hl)
-    and b
-    jr z,_BM_KEY_CHECK_WAIT_RELEASE
-    xor a
-    ret
-
-;--- Convert a 1-byte number to an unterminated ASCII string
-;    Input:  A  = Number to convert
-;            IX = Destination address for the string
-;    Output: IX points after the string
-;    Modifies: AF, C
-
-BYTE2ASC:  cp  10
-  jr  c,B2A_1D
-  cp  100
-  jr  c,B2A_2D
-  cp  200
-  jr  c,B2A_1XX
-  jr  B2A_2XX
-
-  ; One digit
-
-B2A_1D:  add  "0"
-  ld  (ix),a
-  inc  ix
-  ret
-
-  ; Two digits
-
-B2A_2D:  ld  c,"0"
-B2A_2D2:  inc  c
-  sub  10
-  cp  10
-  jr  nc,B2A_2D2
-
-  ld  (ix),c
-  inc  ix
-  jr  B2A_1D
-
-  ; Between 100 and 199
-
-B2A_1XX:  ld  (ix),"1"
-  sub  100
-B2A_XXX:  inc  ix
-  cp  10
-  jr  nc,B2A_2D  ;If 1XY with X>0
-  ld  (ix),"0"  ;If 10Y
-  inc  ix
-  jr  B2A_1D
-
-  ;--- Between 200 and 255
-
-B2A_2XX:  ld  (ix),"2"
-  sub  200
-  jr  B2A_XXX
+; -----------------------------------------------------------------------------
+; Text strings
+; -----------------------------------------------------------------------------
 
 ;--- Strings
 
@@ -539,7 +549,10 @@ BM_HELP_2:
     db " and when CAPS blinks press the key."
     db 0
 
-    ;--- Variable definition
+
+; -----------------------------------------------------------------------------
+; Variables
+; -----------------------------------------------------------------------------
 
 _BM_VARS_BASE: equ 0E000h
 
