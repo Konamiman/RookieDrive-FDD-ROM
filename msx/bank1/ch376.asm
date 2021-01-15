@@ -556,8 +556,15 @@ HWF_CHANGE_DIR:
 ;         BC = Maximum number of files/directories to enumerate
 ; Output: Cy = 0: ok
 ;              1: error, no device present or it's not a storage device
+;         BC = Number of filenames found (if no error)
 
 HWF_ENUM_FILES:
+    push bc
+    call _HWF_ENUM_FILES
+    pop bc
+    ret
+
+_HWF_ENUM_FILES:
     ld de,0
     push hl
     pop ix
