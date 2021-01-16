@@ -37,18 +37,25 @@ DO_BOOT_MENU:
 
     ; Enumerate files, initialize paging
 
+    ld a,1
+    ld (BM_CUR_PAGE),a
+
     ld hl,BM_SCANNING_DIR_S
     call BM_PRINT_STATUS
 
     ld hl,BM_FILES_BASE
-    ld bc,1300
+    ld bc,1290
     call HWF_ENUM_FILES
-
-    ld a,1
-    ld (BM_CUR_PAGE),a
-
     ld (BM_NUM_FILES),bc
     push bc
+
+    push hl
+    pop de
+    inc de
+    ld (hl),0
+    ld bc,59*11-1
+    ldir
+
     pop hl
     ld b,0
 _BM_CALC_NUM_PAGES:
@@ -92,6 +99,13 @@ BM_ENTER_MAIN_LOOP:
     call BM_PRINT_MAIN_STATUS
 
     call BM_PRINT_FILENAMES_PAGE
+    call BM_UPDATE_CUR_PAGE_PNT
+    xor a
+    ld (BM_CUR_ROW),a
+    ld (BM_CUR_COL),a
+    call BM_UPDATE_CUR_FILE_PNT
+    call BM_POSIT_CUR_FILE
+    call BM_PRINT_CURRENT_FILE_AS_SELECTED
 
 ;--- This is the actual start of the loop
 
@@ -104,10 +118,12 @@ _BM_MAIN_LOOP:
     jp z,BM_DO_HELP
 
     call BM_CURSOR_IS_PRESSED
+    or a
+    jr z,_BM_MAIN_LOOP
     bit 7,a
-    jp nz,BM_UPDATE_PAGE
-
-    jr _BM_MAIN_LOOP
+    jp z,BM_UPDATE_CUR_FILE
+    and 7Fh
+    jp BM_UPDATE_PAGE
 
 
 ; -----------------------------------------------------------------------------
@@ -156,11 +172,87 @@ _BM_HELP_LOOP2:
     jp BM_ENTER_MAIN_LOOP
 
 
-;--- Update current page on cursor press
+;--- Update currently pointed file on cursor press
+;    Input: A = pressed cursor key
+
+BM_UPDATE_CUR_FILE:
+    push af
+    call BM_POSIT_CUR_FILE
+    call BM_PRINT_CURRENT_FILE
+    pop af
+    
+    dec a
+    jr z,_BM_FILE_UP
+    dec a
+    jr z,_BM_FILE_RIGHT
+    dec a
+    jr z,_BM_FILE_DOWN
+
+_BM_FILE_LEFT:
+    ld a,(BM_CUR_COL)
+    dec a
+    cp 0FFh
+    jr nz,_BM_UPDATE_CUR_COL_GO
+    ld a,2
+    jr _BM_UPDATE_CUR_COL_GO
+
+_BM_FILE_RIGHT:
+    ld a,(BM_CUR_COL)
+    inc a
+    cp 3
+    jr c,_BM_UPDATE_CUR_COL_GO
+    xor a
+    jr _BM_UPDATE_CUR_COL_GO
+
+_BM_FILE_UP:
+    ld a,(BM_CUR_ROW)
+    dec a
+    cp 0FFh
+    jr nz,_BM_UPDATE_CUR_ROW_GO
+    ld a,19
+    jr _BM_UPDATE_CUR_ROW_GO
+
+_BM_FILE_DOWN:
+    ld a,(BM_CUR_ROW)
+    inc a
+    cp 20
+    jr c,_BM_UPDATE_CUR_ROW_GO
+    xor a
+    jr _BM_UPDATE_CUR_ROW_GO
+
+_BM_UPDATE_CUR_COL_GO:
+    ld (BM_CUR_COL),a
+    ld hl,BM_CUR_COL
+    ld (BM_BUF),hl
+    jr _BM_UPDATE_CUR_ROWCOL_GO
+
+_BM_UPDATE_CUR_ROW_GO:
+    ld (BM_CUR_ROW),a
+    ld hl,BM_CUR_ROW
+    ld (BM_BUF),hl
+
+_BM_UPDATE_CUR_ROWCOL_GO:
+    call BM_UPDATE_CUR_FILE_PNT
+    ld hl,(BM_CUR_FILE_PNT)
+    ld a,(hl)
+    or a
+    jr nz,_BM_UPDATE_CUR_ROWCOL_GO_2
+    ;We ended up pointing past the end of the list,
+    ;so reset column/row to 0
+    ld hl,(BM_BUF)
+    ld (hl),0
+    call BM_UPDATE_CUR_FILE_PNT
+
+_BM_UPDATE_CUR_ROWCOL_GO_2:
+    call BM_POSIT_CUR_FILE
+    call BM_PRINT_CURRENT_FILE_AS_SELECTED
+    jp _BM_MAIN_LOOP
+
+
+;--- Update current page on cursor+SHIFT press
 ;    Input: A = pressed cursor key
 
 BM_UPDATE_PAGE:
-    and 7Fh
     dec a
     jr z,_BM_NEXT_10_PAGES
     dec a
@@ -293,18 +385,40 @@ _BM_PRINT_FILENAMES_COLUMN_END:
     ret
 
 
+;--- Generate a formatted file name from one in dir entry format
+;    Input:  HL = Pointer to filename in directory entry format
+;                 (11 chars, name and extension padded with spaces)
+;            DE = Destination buffer for the formatted file name
+;    Output: HL = Points past the filename
+;            C  = Length of the formatted file name
+
+BM_GENERATE_FILENAME:
+    ld ix,_BM_DO_LD_DE
+    ld c,0
+    call _BM_PRINTPUT_FILENAME
+    xor a
+    ld (de),a
+    ret
+
+
 ;--- Print a formatted file name in the current position
 ;    Input:  HL = Pointer to filename in directory entry format
-;                 (11 chars, name and extensionpadded with spaces)
+;                 (11 chars, name and extension padded with spaces)
 ;    Output: HL = Points past the filename
+;            C  = Length of the printed file name
 
 BM_PRINT_FILENAME:
+    ld ix,_BM_DO_CHPUT
+
+
+_BM_PRINTPUT_FILENAME:
     ld b,8
+    ld c,0
 _BM_PRINT_FILENAME_MAIN:
     ld a,(hl)
     inc hl
     cp ' '
-    call nz,CHPUT
+    call nz,CALL_IX
     djnz _BM_PRINT_FILENAME_MAIN
 
     ld a,(hl)
@@ -312,13 +426,13 @@ _BM_PRINT_FILENAME_MAIN:
     ld b,3
     jr z,_BM_PRINT_FILENAME_EXT
     ld a,'.'
-    call CHPUT
+    call CALL_IX
 _BM_PRINT_FILENAME_EXT:
     ld a,(hl)
     inc hl
     and 7Fh
     cp ' '
-    call nz,CHPUT
+    call nz,CALL_IX
     djnz _BM_PRINT_FILENAME_EXT
 
     dec hl
@@ -327,7 +441,17 @@ _BM_PRINT_FILENAME_EXT:
     and 80h
     ret z
     ld a,'/'
+    jp CALL_IX
+
+_BM_DO_CHPUT:
+    inc c
     jp CHPUT
+
+_BM_DO_LD_DE:
+    ld (de),a
+    inc de
+    inc c
+    ret
 
 
 ;--- Clear the central information area
@@ -404,6 +528,67 @@ _BM_DRAW_LINE_LOOP:
     call CHPUT
     djnz _BM_DRAW_LINE_LOOP
     ret
+
+
+;--- Position the cursor for the current file:
+;    col = (BM_CUR_COL*13)+2
+;    row = BM_CUR_ROW+3
+
+BM_POSIT_CUR_FILE:
+    ld a,(BM_CUR_COL)
+    ld b,a
+    sla a
+    sla a
+    sla a   ;*8
+    add b
+    add b
+    add b
+    add b
+    add b   ;*13
+    inc a
+    inc a
+    ld h,a
+    ld a,(BM_CUR_ROW)
+    add 3
+    ld l,a
+    jp POSIT
+
+
+;--- Print the current filename at the current position
+
+BM_PRINT_CURRENT_FILE:
+    ld hl,(BM_CUR_FILE_PNT)
+    call BM_PRINT_FILENAME
+    ld b,' '
+_BM_PRINT_CURRENT_FILE_PAD:
+    ld a,c
+    cp 12
+    ret nc
+    ld a,b
+    call CHPUT
+    inc c
+    jr _BM_PRINT_CURRENT_FILE_PAD
+
+
+;--- Print the current filename at the current position, as selected
+
+BM_PRINT_CURRENT_FILE_AS_SELECTED:
+    ld hl,(BM_CUR_FILE_PNT)
+    ld de,BM_BUF
+    call BM_GENERATE_FILENAME
+    ld hl,BM_BUF
+
+_BM_PRINT_SELECTED_LOOP:
+    ld a,(hl)
+    or a
+    jr z,_BM_PRINT_SELECTED_LOOP_END
+    or 32
+    call CHPUT
+    inc hl
+    jr _BM_PRINT_SELECTED_LOOP
+_BM_PRINT_SELECTED_LOOP_END
+    ld b,'!'
+    jr _BM_PRINT_CURRENT_FILE_PAD
 
 
 ; -----------------------------------------------------------------------------
@@ -485,11 +670,106 @@ _BM_CURSOR_WAIT_RELEASE:
     ld a,(hl)
     cpl
     and 11110000b
-    jr z,_BM_CURSOR_WAIT_RELEASE
+    jr nz,_BM_CURSOR_WAIT_RELEASE
 
     pop af
     ret
 
+
+; -----------------------------------------------------------------------------
+; Utility routines
+; -----------------------------------------------------------------------------
+
+
+;--- Update BM_CUR_PAGE_PNT as:
+;    BM_FILES_BASE + ((BM_CUR_PAGE-1)*60)*11
+
+BM_UPDATE_CUR_PAGE_PNT:
+    ld hl,(BM_CUR_PAGE)
+    ld h,0
+    dec l
+    call BM_MULT_60
+    call BM_MULT_11
+    ld de,BM_FILES_BASE
+    add hl,de
+    ld (BM_CUR_PAGE_PNT),hl
+    ret
+
+
+;--- Update BM_CUR_FILE_PNT as:
+;    BM_CUR_PAGE_PNT + ((BM_CUR_COL*20) + BM_CUR_ROW)*11
+
+BM_UPDATE_CUR_FILE_PNT:
+    ld hl,(BM_CUR_COL)
+    ld h,0
+    call BM_MULT_20
+    ld de,(BM_CUR_ROW)
+    ld d,0
+    add hl,de
+    call BM_MULT_11
+    ld de,(BM_CUR_PAGE_PNT)
+    add hl,de
+    ld (BM_CUR_FILE_PNT),hl
+    ret
+
+
+;--- Multiply HL by 11
+
+BM_MULT_11:
+    push hl
+    pop de
+    sla l
+    rl h    ;*2
+    sla l
+    rl h    ;*4
+    sla l
+    rl h    ;*8
+    add hl,de   ;*9
+    add hl,de   ;*10
+    add hl,de   ;*11
+    ret
+
+
+;--- Multiply HL by 20
+
+BM_MULT_20:
+    push hl
+    pop de
+    sla l
+    rl h    ;*2
+    sla l
+    rl h    ;*4
+    sla l
+    rl h    ;*8
+    sla l
+    rl h    ;*16
+    add hl,de   ;*17
+    add hl,de   ;*18
+    add hl,de   ;*19
+    add hl,de   ;*20
+    ret
+
+
+;--- Multiply HL by 60
+
+BM_MULT_60:
+    push hl
+    pop de
+    sla l
+    rl h    ;*2
+    sla l
+    rl h    ;*4
+    sla l
+    rl h    ;*8
+    sla l
+    rl h    ;*16
+    sla l
+    rl h    ;*32
+    ld b,60-32
+_BM_MULT_60_LOOP:
+    add hl,de
+    djnz _BM_MULT_60_LOOP
+    ret
 
 ; -----------------------------------------------------------------------------
 ; Text strings
@@ -560,3 +840,8 @@ BM_NUM_PAGES: equ _BM_VARS_BASE
 BM_CUR_PAGE:  equ BM_NUM_PAGES+1
 BM_NUM_FILES: equ BM_CUR_PAGE+1
 BM_BUF: equ BM_NUM_FILES+2
+BM_CUR_PAGE_PNT: equ BM_BUF+13   ;Pointer to 1st filename in current page
+BM_CUR_FILE_PNT: equ BM_CUR_PAGE_PNT+2   ;Pointer to current filename
+BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
+BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
+

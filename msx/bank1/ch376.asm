@@ -556,6 +556,7 @@ HWF_CHANGE_DIR:
 ;         BC = Maximum number of files/directories to enumerate
 ; Output: Cy = 0: ok
 ;              1: error, no device present or it's not a storage device
+;         HL = Pointer to the 0 byte at the end of the list
 ;         BC = Number of filenames found (if no error)
 
 HWF_ENUM_FILES:
@@ -603,7 +604,7 @@ _HWF_ENUM_FILES_LOOP:
     ld (ix-4),' '
     ld (ix-3),' '
     ld (ix-2),' '
-    ld (ix-1),128
+    ld (ix-1),128+32    ;Space with bit 7 set
 _HWF_ENUM_FILES_NODIR:
 
     pop bc
@@ -614,6 +615,8 @@ _HWF_ENUM_FILES_NODIR:
 
     xor a
     ld (ix),a
+    push ix
+    pop hl
     ret
 
 FILE_S: db "FIL"
