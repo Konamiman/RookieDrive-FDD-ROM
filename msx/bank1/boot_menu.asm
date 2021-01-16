@@ -52,9 +52,9 @@ DO_BOOT_MENU:
     ld (BM_NUM_FILES),bc
     push bc
 
-    push hl
-    pop de
-    inc de
+    push hl ;Fill one extra page of 0s.
+    pop de  ;This will be used to detect non-existing
+    inc de  ;file positions in the last page.
     ld (hl),0
     ld bc,59*11-1
     ldir
@@ -89,6 +89,10 @@ _BM_CALC_NUM_PAGES_END:
 _BM_CALC_NUM_PAGES_END_2:
     ld (BM_NUM_PAGES),a
 
+    xor a
+    ld (BM_CUR_ROW),a
+    ld (BM_CUR_COL),a
+
 
 ; -----------------------------------------------------------------------------
 ; Main key scanning loop
@@ -103,9 +107,6 @@ BM_ENTER_MAIN_LOOP:
 
     call BM_PRINT_FILENAMES_PAGE
     call BM_UPDATE_CUR_PAGE_PNT
-    xor a
-    ld (BM_CUR_ROW),a
-    ld (BM_CUR_COL),a
     call BM_UPDATE_CUR_FILE_PNT
     call BM_POSIT_CUR_FILE
     call BM_PRINT_CURRENT_FILE_AS_SELECTED
@@ -275,7 +276,7 @@ _BM_NEXT_PAGE:
 
     inc a
     ld (BM_CUR_PAGE),a
-    jp BM_ENTER_MAIN_LOOP
+    jp _BM_UPDATE_PAGE_END
 
 _BM_NEXT_10_PAGES:
     ld a,(BM_NUM_PAGES)
@@ -291,7 +292,7 @@ _BM_NEXT_10_PAGES:
 
 _BM_NEXT_10_PAGES_GO:
     ld (BM_CUR_PAGE),a
-    jp BM_ENTER_MAIN_LOOP
+    jp _BM_UPDATE_PAGE_END
 
 _BM_PREV_PAGE:
     ld a,(BM_CUR_PAGE)
@@ -300,7 +301,7 @@ _BM_PREV_PAGE:
 
     dec a
     ld (BM_CUR_PAGE),a
-    jp BM_ENTER_MAIN_LOOP
+    jp _BM_UPDATE_PAGE_END
 
 _BM_PREV_10_PAGES:
     ld a,(BM_CUR_PAGE)
@@ -314,8 +315,13 @@ _BM_PREV_10_PAGES_1:
 
 _BM_PREV_10_PAGES_GO:
     ld (BM_CUR_PAGE),a
-    jp BM_ENTER_MAIN_LOOP
+    jp _BM_UPDATE_PAGE_END
 
+_BM_UPDATE_PAGE_END:
+    xor a
+    ld (BM_CUR_ROW),a
+    ld (BM_CUR_COL),a
+    jp BM_ENTER_MAIN_LOOP
 
 ; -----------------------------------------------------------------------------
 ; Screen printing routines
