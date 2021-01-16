@@ -14,6 +14,9 @@ BM_FILES_BASE: equ 8000h
 
 DO_BOOT_MENU:
 
+    xor a
+    ld (BM_CURSOR_LAST),a
+
     ; Init screen mode, draw fixed elements
 
     ld a,40
@@ -651,28 +654,25 @@ BM_CURSOR_IS_PRESSED:
     jr nc,_BM_CURSOR_IS_PRESSED_END
 
     xor a
+    ld (BM_CURSOR_LAST),a
     ret
 
 _BM_CURSOR_IS_PRESSED_END:
+    ld a,(BM_CURSOR_LAST)
+    or a
+    ld a,0
+    ret nz  ;Still pressed since last time
+
+    inc a
+    ld (BM_CURSOR_LAST),a
+
     dec hl
-    dec hl  ;Row 6
+    dec hl  ;Row 6 (for SHIFT)
     ld a,(hl)
     cpl
     rrca
     and 80h
     or b
-    push af
-    inc hl
-    inc hl
-
-_BM_CURSOR_WAIT_RELEASE:
-    halt
-    ld a,(hl)
-    cpl
-    and 11110000b
-    jr nz,_BM_CURSOR_WAIT_RELEASE
-
-    pop af
     ret
 
 
@@ -844,4 +844,4 @@ BM_CUR_PAGE_PNT: equ BM_BUF+13   ;Pointer to 1st filename in current page
 BM_CUR_FILE_PNT: equ BM_CUR_PAGE_PNT+2   ;Pointer to current filename
 BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
 BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
-
+BM_CURSOR_LAST: equ BM_CUR_COL+1    ;Result of last call to BM_CURSOR_IS_PRESSED
