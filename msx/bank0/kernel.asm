@@ -63,7 +63,7 @@ KEYINT	equ	00038H
 LDIRMV	equ	00059H
 LDIRVM	equ	0005CH
 CHSNS	equ	0009CH
-CHGET	equ	0009FH
+;CHGET	equ	0009FH
 ;CHPUT	equ	000A2H
 LPTOUT	equ	000A5H
 ;BREAKX	equ	000B7H
@@ -72,7 +72,7 @@ ERAFNK	equ	000CCH
 TOTEXT	equ	000D2H
 SNSMAT	equ	00141H
 PHYDIO	equ	00144H
-KILBUF	equ	00156H
+;KILBUF	equ	00156H
 CALBAS	equ	00159H
 
 X003B	equ	0003BH			; helper routine in DOS memoryspace: save and change secundairy slotregister

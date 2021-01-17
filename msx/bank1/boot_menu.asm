@@ -118,6 +118,9 @@ _BM_MAIN_LOOP:
     call BREAKX
     ret c
 
+    call BM_ENTER_IS_PRESSED
+    jp z,BM_DO_ENTER
+
     call BM_F1_IS_PRESSED
     jp z,BM_DO_HELP
 
@@ -136,6 +139,39 @@ _BM_MAIN_LOOP:
 ; These are JP-ed in, so they must finish by JP-ing to
 ; either BM_ENTER_MAIN_LOOP or _BM_MAIN_LOOP.
 ; -----------------------------------------------------------------------------
+
+
+;--- ENTER key press handler
+
+BM_DO_ENTER:
+    ld hl,(BM_CUR_FILE_PNT)
+    ld de,BM_BUF
+    call BM_GENERATE_FILENAME
+    ld hl,BM_BUF
+    
+    call HWF_OPEN_FILE_DIR
+    or a
+    ret z   ;Continue computer boot process
+
+    dec a
+    jp z,_BM_MAIN_LOOP  ;TODO: handle entering directory
+
+    dec a
+    ld hl,BM_FILE_NOT_FOUND_S
+    jr z,_BM_DO_ENTER_PRINT_ERR
+    
+    ld hl,BM_ERROR_OPENING_FILE_S
+_BM_DO_ENTER_PRINT_ERR:
+    call BM_PRINT_STATUS
+    call KILBUF
+    call CHGET  ;TODO: This displays cursor, somehow hide
+    call KILBUF
+    call BM_PRINT_MAIN_STATUS
+
+_BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
+    call BM_ENTER_IS_PRESSED
+    jr z,_BM_DO_ENTER_WAIT_RELEASE
+    jp _BM_MAIN_LOOP
 
 
 ;--- Help loop, entered when F1 is pressed
@@ -687,6 +723,22 @@ BM_F1_IS_PRESSED:
     jp BM_KEY_CHECK
 
 
+;--- Check if ENTER is pressed
+;    Output: Z if pressed, NZ if not
+
+BM_ENTER_IS_PRESSED:
+    ld de,8007h
+    jp BM_KEY_CHECK
+    ret nz
+
+_BM_ENTER_IS_PRESSED_WAIT_RELEASE:
+    ld de,8007h
+    call BM_KEY_CHECK
+    jr z,_BM_ENTER_IS_PRESSED_WAIT_RELEASE
+    xor a
+    ret
+
+
 ;--- Check if a cursor key is pressed
 ;    Output: A=0: no cursor key is pressed
 ;              1,2,3,4: up,right,down,left
@@ -855,6 +907,12 @@ BM_NO_FILES_S:
 
 BM_SCANNING_DIR_S:
     db "Scanning directory...",0
+
+BM_FILE_NOT_FOUND_S:
+    db "File/dir not found! Press any key",0
+
+BM_ERROR_OPENING_FILE_S:
+    db "Error opening file/dir! Press any key",0
 
 BM_HELP_1:
     db " Cursors: select file or directory",13,10

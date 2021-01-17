@@ -527,16 +527,26 @@ HWF_MOUNT_DISK:
 FAKE_DEV_NAME:
     db "TheStorageThing     0.05"
 
-; -----------------------------------------------------------------------------
-; HWF_CHANGE_DIR: Enter a directory from the current one
-; -----------------------------------------------------------------------------
-; Input:  HL = Address of directory name, relative to current,
-;              can be ".." to go back to previous
-; Output: A  = 0: ok
-;              1: directory not found
-;              2: other error (e.g. no device found)
 
-HWF_CHANGE_DIR:
+; -----------------------------------------------------------------------------
+; HWF_OPEN_FILE_DIR: Open a file or enter a directory from the current one
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of file or directory name, relative to current,
+;              can be ".." to go back to previous
+; Output: A  = 0: ok, file open
+;              1: ok, directory entered
+;              2: file or directory not found
+;              3: other error (e.g. no device found)
+
+HWF_OPEN_FILE_DIR:
+    ld a,3
+    ret
+
+    ld a,27
+    call CHPUT
+    ld a,'j'
+    call CHPUT
+    call PRINT
     xor a
     ret
 
