@@ -399,6 +399,7 @@ _BM_PRINT_FILENAMES_COLUMN_END:
 ;                 (11 chars, name and extension padded with spaces)
 ;            DE = Destination buffer for the formatted file name
 ;    Output: HL = Points past the filename
+;            DE = Points to the termination 0
 ;            C  = Length of the formatted file name
 
 BM_GENERATE_FILENAME:
@@ -581,23 +582,74 @@ _BM_PRINT_CURRENT_FILE_PAD:
 
 ;--- Print the current filename at the current position, as selected
 
+    ;Generate the formatted file name in BM_BUF, padded with spaces
+
 BM_PRINT_CURRENT_FILE_AS_SELECTED:
     ld hl,(BM_CUR_FILE_PNT)
     ld de,BM_BUF
     call BM_GENERATE_FILENAME
-    ld hl,BM_BUF
 
-_BM_PRINT_SELECTED_LOOP:
+_BM_GEN_CURRENT_FILE_PAD:
+    ld a,c
+    cp 12
+    jr nc,_BM_GEN_CURRENT_FILE_OK
+    ld a,' '
+    ld (de),a
+    inc de
+    inc c
+    jr _BM_GEN_CURRENT_FILE_PAD
+_BM_GEN_CURRENT_FILE_OK:
+
+    ;Redefine chars 128-139 as the inverted chars of the filename
+
+    ld hl,(TXTCGP)
+    ld de,128*8
+    add hl,de
+    call SETWRT
+
+    ld a,(VDP_DW)
+    ld c,a      ;VDP write port
+
+    ld hl,BM_BUF ;Pointer to current char
+    ld b,12     ;How many chars left to invert
+_BM_INVERT_CHARS_LOOP:
+    push hl
+    push bc
+    ld e,(hl)
+    ld d,0
+    sla e
+    rl d
+    sla e
+    rl d
+    sla e
+    rl d    ;DE = Current char *8
+    ld hl,(CGTABL)
+    add hl,de   ;HL = Pointer to start of char definition
+
+    ld b,8
+_BM_INVERT_ONE_CHAR_LOOP
     ld a,(hl)
-    or a
-    jr z,_BM_PRINT_SELECTED_LOOP_END
-    or 32
-    call CHPUT
+    cpl
+    out (c),a
     inc hl
-    jr _BM_PRINT_SELECTED_LOOP
-_BM_PRINT_SELECTED_LOOP_END
-    ld b,'!'
-    jr _BM_PRINT_CURRENT_FILE_PAD
+    djnz _BM_INVERT_ONE_CHAR_LOOP
+
+    pop bc
+    pop hl
+    inc hl
+    djnz _BM_INVERT_CHARS_LOOP
+
+    ;Print the inverted filename
+
+    call BM_POSIT_CUR_FILE
+    ld a,128
+_BM_PRINT_INVERTED_LOOP:
+    call CHPUT
+    inc a
+    cp 128+12
+    jr c,_BM_PRINT_INVERTED_LOOP
+
+    ret
 
 
 ; -----------------------------------------------------------------------------

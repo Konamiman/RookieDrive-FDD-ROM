@@ -1,9 +1,15 @@
+CGTABL: equ 0004h ;Address of font definition in BIOS ROM
+
+VDP_DW: equ 0007h
+WRTVRM: equ 004Dh
+SETWRT: equ 0053h
 INITXT: equ 006Ch
 CHPUT:  equ 00A2h
 BREAKX: equ 00B7h
 POSIT:  equ 00C6h
 
 LINL40: equ 0F3AEh
+TXTCGP: equ 0F3B7h ;Address of pattern generator table in VRAM
 OLDKEY: equ 0FBDAh
 NEWKEY: equ 0FBE5h
 
