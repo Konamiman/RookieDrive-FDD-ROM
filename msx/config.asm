@@ -39,7 +39,7 @@ USE_ALTERNATIVE_PORTS: equ 0
 
 ;Enable this if you are Konamiman and you are using NestorMSX with
 ;the almigthy Arduino board that Xavirompe sent you 
-USING_ARDUINO_BOARD: equ 0
+USING_ARDUINO_BOARD: equ 1
 
 ;Enable to debug DSKIO calls: whenever DSKIO is called, text mode is enabled,
 ;the input parameters are printed, and system stops waiting for a key press
@@ -48,6 +48,9 @@ DEBUG_DSKIO: equ 0
 ;Enable to wait for a key press after displaying the device information
 ;at boot time
 WAIT_KEY_ON_INIT: equ 0
+
+;Enable to simulate a fake storage device connected to a USB port
+USE_FAKE_STORAGE_DEVICE: equ 0
 
 
 ; -----------------------------------------------------------------------------

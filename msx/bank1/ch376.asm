@@ -65,6 +65,12 @@ CH_CMD_ABORT_NAK: equ 17h
 CH_CMD_GET_STATUS: equ 22h
 CH_CMD_RD_USB_DATA0: equ 27h
 CH_CMD_WR_HOST_DATA: equ 2Ch
+CH_CMD_SET_FILE_NAME: equ 2Fh
+CH_CMD_DISK_CONNECT: equ 30h
+CH_CMD_DISK_MOUNT: equ 31h
+CH_CMD_FILE_OPEN: equ 32h
+CH_CMD_FILE_ENUM_GO: equ 33h
+CH_CMD_FILE_CLOSE: equ 36h
 CH_CMD_SET_ADDRESS: equ 45h
 CH_CMD_GET_DESCR: equ 46h
 CH_CMD_SET_CONFIG: equ 49h
@@ -96,8 +102,10 @@ CH_ST_RET_ABORT: equ 5Fh
 ; Output: Cy = 0 if hardware is operational, 1 if it's not
 
 HW_TEST:
+    if USE_FAKE_STORAGE_DEVICE=1
     or a
-    ret ;!!!
+    ret
+    endif
 
     ld a,34h
     call _HW_TEST_DO
@@ -516,6 +524,8 @@ _CH_DELAY_LOOP:
 ;              1: error, no device present or it's not a storage device
 
 HWF_MOUNT_DISK:
+    if USE_FAKE_STORAGE_DEVICE=1
+
     ex de,hl
     ld hl,FAKE_DEV_NAME
     ld bc,24
@@ -526,6 +536,39 @@ HWF_MOUNT_DISK:
 
 FAKE_DEV_NAME:
     db "TheStorageThing     0.05"
+
+    endif
+
+    ld a,CH_CMD_DISK_CONNECT
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+    cp USB_ERR_OK
+    scf
+    ret nz
+
+    ld a,6
+    call CH_SET_USB_MODE
+
+    ld a,CH_CMD_DISK_MOUNT
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+    cp USB_ERR_OK
+    scf
+    ret nz
+
+    push hl
+    call CH_READ_DATA
+    pop hl
+    ld d,h
+    ld e,l
+    ld bc,8
+    add hl,bc
+    ld bc,36-8
+    ldir
+    xor a
+    ld (de),a
+
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -539,8 +582,7 @@ FAKE_DEV_NAME:
 ;              3: other error (e.g. no device found)
 
 HWF_OPEN_FILE_DIR:
-    ld a,3
-    ret
+    if USE_FAKE_STORAGE_DEVICE=1
 
     ld a,27
     call CHPUT
@@ -548,6 +590,31 @@ HWF_OPEN_FILE_DIR:
     call CHPUT
     call PRINT
     xor a
+    ret
+
+    endif
+
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    call CH_WRITE_STRING
+
+    ld a,CH_CMD_FILE_OPEN
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+
+    ld b,0
+    cp USB_ERR_OK
+    jr z,_HWF_OPEN_FILE_DIR_END
+    inc b
+    cp USB_ERR_OPEN_DIR
+    jr z,_HWF_OPEN_FILE_DIR_END
+    inc b
+    cp USB_ERR_MISS_FILE
+    jr z,_HWF_OPEN_FILE_DIR_END
+    inc b
+
+_HWF_OPEN_FILE_DIR_END:
+    ld a,b
     ret
 
 
@@ -838,6 +905,13 @@ CH_WAIT_INT_AND_GET_RESULT:
     jr nz,CH_WAIT_INT_AND_GET_RESULT    ;TODO: Perhaps add a timeout check here?
 
     call CH_GET_STATUS
+    cp USB_FILERR_MIN
+    jr c,_CH_WAIT_INT_AND_GET_RESULT_2
+    cp USB_FILERR_MAX+1
+    jr nc,_CH_WAIT_INT_AND_GET_RESULT_2
+    ret
+
+_CH_WAIT_INT_AND_GET_RESULT_2:
 
     cp CH_ST_RET_SUCCESS
     ld b,USB_ERR_OK
@@ -1056,3 +1130,13 @@ CH_WRITE_DATA:
     otir
     ret
 
+
+CH_WRITE_STRING:
+    ld c,CH_DATA_PORT
+_CH_WRITE_STRING_LOOP:
+    ld a,(hl)
+    inc hl
+    out (c),a
+    or a
+    jr nz,_CH_WRITE_STRING_LOOP
+    ret

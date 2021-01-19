@@ -46,6 +46,15 @@ DO_BOOT_MENU:
     ld hl,BM_SCANNING_DIR_S
     call BM_PRINT_STATUS
 
+    ld hl,BM_ROOT_DIR_S
+    call HWF_OPEN_FILE_DIR
+    dec a
+    jr z,_BM_OPEN_ROOT_OK
+    ld hl,BM_ERROR_OPENING_FILE_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    ret
+_BM_OPEN_ROOT_OK:
+
     ld hl,BM_FILES_BASE
     ld bc,1290
     call HWF_ENUM_FILES
@@ -162,16 +171,22 @@ BM_DO_ENTER:
     
     ld hl,BM_ERROR_OPENING_FILE_S
 _BM_DO_ENTER_PRINT_ERR:
-    call BM_PRINT_STATUS
-    call KILBUF
-    call CHGET  ;TODO: This displays cursor, somehow hide
-    call KILBUF
+    call BM_PRINT_STATUS_WAIT_KEY
     call BM_PRINT_MAIN_STATUS
 
 _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
     call BM_ENTER_IS_PRESSED
     jr z,_BM_DO_ENTER_WAIT_RELEASE
     jp _BM_MAIN_LOOP
+
+
+;--- Print the string HL in the status area and wait for a key press
+
+BM_PRINT_STATUS_WAIT_KEY:
+    call BM_PRINT_STATUS
+    call KILBUF
+    call CHGET  ;TODO: This displays cursor, somehow hide
+    jp KILBUF
 
 
 ;--- Help loop, entered when F1 is pressed
@@ -901,6 +916,9 @@ BM_PAGE_S:
 
 BM_SPACE_AND_BAR:
     db " / ",0
+
+BM_ROOT_DIR_S:
+    db "/",0
 
 BM_NO_FILES_S:
     db "No files found in current directory!",0
