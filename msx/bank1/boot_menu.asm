@@ -5,7 +5,7 @@
 ; a navigable list of disk image files (available only when a
 ; standard USB mass storage device is plugged in).
 
-BM_FILES_BASE: equ 8000h
+BM_FILES_BASE: equ 8010h
 
 
 ; -----------------------------------------------------------------------------
@@ -16,6 +16,18 @@ DO_BOOT_MENU:
 
     xor a
     ld (BM_CURSOR_LAST),a
+
+    ; Try opening DSK directory on the device
+
+    ld hl,BM_ROOT_DIR_S
+    call HWF_OPEN_FILE_DIR
+    dec a
+    ret nz
+
+    ld hl,BM_DSK_S
+    call HWF_OPEN_FILE_DIR
+    dec a
+    ret nz
 
     ; Init screen mode, draw fixed elements
 
@@ -45,15 +57,6 @@ DO_BOOT_MENU:
 
     ld hl,BM_SCANNING_DIR_S
     call BM_PRINT_STATUS
-
-    ld hl,BM_ROOT_DIR_S
-    call HWF_OPEN_FILE_DIR
-    dec a
-    jr z,_BM_OPEN_ROOT_OK
-    ld hl,BM_ERROR_OPENING_FILE_S
-    call BM_PRINT_STATUS_WAIT_KEY
-    ret
-_BM_OPEN_ROOT_OK:
 
     ld hl,BM_FILES_BASE
     ld bc,1290
@@ -919,6 +922,9 @@ BM_SPACE_AND_BAR:
 
 BM_ROOT_DIR_S:
     db "/",0
+
+BM_DSK_S:
+    db "DSK",0
 
 BM_NO_FILES_S:
     db "No files found in current directory!",0

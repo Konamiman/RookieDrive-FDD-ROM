@@ -88,6 +88,9 @@ CH_ST_INT_SUCCESS: equ 14h
 CH_ST_INT_CONNECT: equ 15h
 CH_ST_INT_DISCONNECT: equ 16h
 CH_ST_INT_BUF_OVER: equ 17h
+CH_ST_INT_DISK_READ: equ 1Dh
+CH_ST_INT_DISK_WRITE: equ 1Eh
+CH_ST_INT_DISK_ERR: equ 1Fh
 CH_ST_RET_SUCCESS: equ 51h
 CH_ST_RET_ABORT: equ 5Fh
 
@@ -584,12 +587,12 @@ FAKE_DEV_NAME:
 HWF_OPEN_FILE_DIR:
     if USE_FAKE_STORAGE_DEVICE=1
 
-    ld a,27
-    call CHPUT
-    ld a,'j'
-    call CHPUT
-    call PRINT
-    xor a
+    ;ld a,27
+    ;call CHPUT
+    ;ld a,'j'
+    ;call CHPUT
+    ;call PRINT
+    ld a,1
     ret
 
     endif
@@ -631,12 +634,12 @@ _HWF_OPEN_FILE_DIR_END:
 ; -----------------------------------------------------------------------------
 ; Input:  HL = Address of buffer to get file info into
 ;         BC = Maximum number of files/directories to enumerate
-; Output: Cy = 0: ok
-;              1: error, no device present or it's not a storage device
-;         HL = Pointer to the 0 byte at the end of the list
-;         BC = Number of filenames found (if no error)
+; Output: HL = Pointer to the 0 byte at the end of the list
+;         BC = Number of filenames found
 
 HWF_ENUM_FILES:
+    if USE_FAKE_STORAGE_DEVICE = 1
+
     push bc
     call _HWF_ENUM_FILES
     pop bc
@@ -725,6 +728,75 @@ Num2:
 	ld	(de),a
 	inc	de
 	ret
+
+    endif
+
+    if USE_FAKE_STORAGE_DEVICE = 0
+
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    ld a,'*'
+    out (CH_DATA_PORT),a
+    xor a
+    out (CH_DATA_PORT),a
+
+    ld de,0     ;Number of files found
+    ld a,CH_CMD_FILE_OPEN
+    out (CH_COMMAND_PORT),a
+_HWF_ENUM_FILES_LOOP:
+    push hl
+    push de
+    push bc
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop bc
+    pop de
+    pop hl
+    cp USB_ERR_OK
+    jr nz,_HWF_ENUM_FILES_END
+
+    push bc
+    push hl
+    push de
+    call CH_READ_DATA
+    pop de
+    pop hl
+    pop bc
+
+    ;WIP: If not letter or digit jump to _HWF_ENUM_DIR_NEXT
+
+    push bc
+    ld bc,11
+    add hl,bc
+    pop bc
+
+    ld a,(hl)   ;File attributes byte
+    and 10h
+    jr z,_HWF_ENUM_DIR_OK
+    dec hl
+    set 7,(hl)
+    inc hl
+_HWF_ENUM_DIR_OK:
+
+    inc de
+
+    dec bc
+    ld a,b
+    or c
+    jr z,_HWF_ENUM_FILES_END
+
+_HWF_ENUM_DIR_NEXT:
+    ld a,CH_CMD_FILE_ENUM_GO
+    out (CH_COMMAND_PORT),a
+    jp _HWF_ENUM_FILES_LOOP
+
+_HWF_ENUM_FILES_END:
+    ld (hl),0
+    push de
+    pop bc
+    ret
+
+    endif
+
 
 ; -----------------------------------------------------------------------------
 ; Optional shortcut routines
@@ -917,6 +989,8 @@ _CH_WAIT_INT_AND_GET_RESULT_2:
     ld b,USB_ERR_OK
     jr z,_CH_LD_A_B_RET
     cp CH_ST_INT_SUCCESS
+    jr z,_CH_LD_A_B_RET
+    cp CH_ST_INT_DISK_READ
     jr z,_CH_LD_A_B_RET
     cp CH_ST_INT_DISCONNECT
     jr z,_CH_NO_DEV_ERR
