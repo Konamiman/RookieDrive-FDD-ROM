@@ -49,7 +49,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
         public RookieDrivePortsPlugin(PluginContext context, IDictionary<string, object> pluginConfig)
         {
             context.Cpu.MemoryAccess += Cpu_MemoryAccess;
-            chPorts = UsbServiceProvider.GetCH376Ports();
+            chPorts = new CH376PortsViaNoobtocol((string)pluginConfig["serialPortNumber"]);
             cpu = context.Cpu;
             slots = context.SlotsSystem;
             context.Cpu.BeforeInstructionFetch += Cpu_BeforeInstructionFetch;
