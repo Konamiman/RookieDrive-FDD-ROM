@@ -235,3 +235,25 @@ B2A_XXX:  inc  ix
 B2A_2XX:  ld  (ix),"2"
   sub  200
   jr  B2A_XXX
+
+
+; -----------------------------------------------------------------------------
+; IS_DIGIT_OR_LETTER: Check if a char is a digit or a letter
+; -----------------------------------------------------------------------------
+; Input: 	  A  = Char to check
+; Output:   Cy=1 if it's a char or a letter (A-Z), 0 otherwise
+; Modifies: AF
+; -----------------------------------------------------------------------------
+
+IS_DIGIT_OR_LETTER:
+  cp '0'
+  ccf
+  ret nc
+  cp '9'+1
+  ret c
+
+  cp 'Z'+1
+  ret nc
+  cp 'A'
+  ccf
+  ret

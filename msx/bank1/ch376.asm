@@ -762,7 +762,9 @@ _HWF_ENUM_FILES_LOOP:
     pop hl
     pop bc
 
-    ;WIP: If not letter or digit jump to _HWF_ENUM_DIR_NEXT
+    ld a,(hl)
+    call IS_DIGIT_OR_LETTER
+    jr nc,_HWF_ENUM_DIR_NEXT
 
     push bc
     ld bc,11
