@@ -16,6 +16,7 @@ DO_BOOT_MENU:
 
     xor a
     ld (BM_CURSOR_LAST),a
+    ld (BM_NO_STOR_DEV),a
 
     ; Try opening DSK directory on the device
 
@@ -130,6 +131,13 @@ _BM_MAIN_LOOP:
     call BREAKX
     ret c
 
+    call BM_F5_IS_PRESSED
+    jp z,BM_START_OVER
+
+    ld a,(BM_NO_STOR_DEV)
+    inc a
+    jr z,_BM_MAIN_LOOP
+
     call BM_ENTER_IS_PRESSED
     jp z,BM_DO_ENTER
 
@@ -143,6 +151,30 @@ _BM_MAIN_LOOP:
     jp z,BM_UPDATE_CUR_FILE
     and 7Fh
     jp BM_UPDATE_PAGE
+
+;--- Start over after F5 is pressed
+
+BM_START_OVER:
+    xor a
+    ld (BM_NUM_FILES),a
+    ld (BM_NUM_FILES+1),a
+    inc a
+    ld (BM_CUR_PAGE),a
+    ld (BM_NUM_PAGES),a
+
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_RESETTING_DEVICE_S
+    call BM_PRINT_STATUS
+
+    call HWF_MOUNT_DISK
+    jp nc,DO_BOOT_MENU
+
+    ld a,0FFh
+    ld (BM_NO_STOR_DEV),a
+    ld hl,BM_NO_DEV_OR_NO_STOR_S
+    call BM_PRINT_STATUS
+    
+    jp _BM_MAIN_LOOP
 
 
 ; -----------------------------------------------------------------------------
@@ -741,6 +773,14 @@ BM_F1_IS_PRESSED:
     jp BM_KEY_CHECK
 
 
+;--- Check if F5 is pressed
+;    Output: Z if pressed, NZ if not
+
+BM_F5_IS_PRESSED:
+    ld de,0207h
+    jp BM_KEY_CHECK
+
+
 ;--- Check if ENTER is pressed
 ;    Output: Z if pressed, NZ if not
 
@@ -932,6 +972,12 @@ BM_NO_FILES_S:
 BM_SCANNING_DIR_S:
     db "Scanning directory...",0
 
+BM_RESETTING_DEVICE_S:
+    db "Resetting device...",0
+
+BM_NO_DEV_OR_NO_STOR_S:
+    db "No storage device found! F5 to retry",0
+
 BM_FILE_NOT_FOUND_S:
     db "File/dir not found! Press any key",0
 
@@ -985,3 +1031,4 @@ BM_CUR_FILE_PNT: equ BM_CUR_PAGE_PNT+2   ;Pointer to current filename
 BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
 BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
 BM_CURSOR_LAST: equ BM_CUR_COL+1    ;Result of last call to BM_CURSOR_IS_PRESSED
+BM_NO_STOR_DEV: equ BM_CURSOR_LAST+1 ;FFh if F5 was pressed and no storage device was found
