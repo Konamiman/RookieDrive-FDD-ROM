@@ -309,6 +309,7 @@ WK_GET_LAST_REL_DRIVE:
 ; Initialize work area for a storage device
 
 WK_INIT_FOR_STORAGE_DEV:
+    call WK_ZERO
     call _WK_GETWRK
     ld (ix),80h
     ld (ix+1),0
@@ -322,10 +323,16 @@ WK_INIT_FOR_STORAGE_DEV:
 ;         NZ if a storage device is connected, Z otherwise
 
 WK_GET_STORAGE_DEV_FLAGS:
+    push hl
+    push de
+    push bc
     push ix
     call _WK_GETWRK
     ld a,(ix)
     pop ix
+    pop bc
+    pop de
+    pop hl
     bit 7,a
     ret
 

@@ -57,6 +57,9 @@ _DSKIO_ERR_PARAM:
     ret
 
 _DSKIO_OK_UNIT:
+    call WK_GET_STORAGE_DEV_FLAGS
+    jp nz,_DSKIO_IMPL_STDEV
+
     ld a,b
     pop bc
     rrc c   ;Now C:7 = 0 to read, 1 to write
@@ -337,6 +340,62 @@ CALL_XFER:
     ret
 
 
+    ;--- DSKIO for storage devices (mounted file) ---
+
+_DSKIO_IMPL_STDEV:
+    pop af
+
+    jp c,_DSKIO_ERR_WPROT   ;No write support for now
+
+    push hl
+    push bc
+
+    ld h,0
+    ld l,d
+    ld d,e
+    ld e,0
+    sla d
+    rl l
+    rl h    ;HLDE = DE*512
+    call HWF_SEEK_FILE
+
+    pop bc
+    pop hl
+    ld c,b
+    ld b,0
+    or a
+    jr z,_DSKIO_IMPL_STDEV_SEEKOK
+    dec a
+    ld a,8  ;Record not found
+    scf
+    ret z
+    ld a,12 ;Other error
+    ret
+
+_DSKIO_IMPL_STDEV_SEEKOK:
+    ld b,c
+
+    ;TODO: use XFER if necessary
+
+    sla b
+    ld c,0  ;BC = B*512
+    call HWF_READ_FILE
+    srl b  ;B = BC/512
+
+    or a
+    ld a,12
+    scf
+    ret nz
+    
+    xor a
+    ret
+
+_DSKIO_ERR_WPROT:
+    xor a
+    scf
+    ret
+
+
 ; -----------------------------------------------------------------------------
 ; DSKCHG
 ; -----------------------------------------------------------------------------
@@ -359,6 +418,11 @@ CALL_XFER:
 
 DSKCHG_IMPL:
     call CHECK_SAME_DRIVE
+
+    push af
+    call WK_GET_STORAGE_DEV_FLAGS
+    jp nz,_DSKCHG_IMPL_STDEV
+    pop af
 
     cp 2
     ld a,12
@@ -384,6 +448,12 @@ DSKCHG_IMPL:
     call GETDPB_IMPL
     pop bc
     xor a
+    ret
+
+_DSKCHG_IMPL_STDEV:
+    pop af
+    xor a
+    ld b,1
     ret
 
 

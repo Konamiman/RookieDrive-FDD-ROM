@@ -50,5 +50,9 @@ DELAY_AFTER_PRINT:
     call HWF_MOUNT_DISK
     ret c
 
+    call WK_INIT_FOR_STORAGE_DEV
+    xor a
+    call WK_SET_LAST_REL_DRIVE
+
     call DO_BOOT_MENU
     ret

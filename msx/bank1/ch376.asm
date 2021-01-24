@@ -71,6 +71,9 @@ CH_CMD_DISK_MOUNT: equ 31h
 CH_CMD_FILE_OPEN: equ 32h
 CH_CMD_FILE_ENUM_GO: equ 33h
 CH_CMD_FILE_CLOSE: equ 36h
+CH_CMD_BYTE_LOCATE: equ 39h
+CH_CMD_BYTE_READ: equ 3Ah
+CH_CMD_BYTE_RD_GO: equ 3Bh
 CH_CMD_SET_ADDRESS: equ 45h
 CH_CMD_GET_DESCR: equ 46h
 CH_CMD_SET_CONFIG: equ 49h
@@ -592,7 +595,7 @@ HWF_OPEN_FILE_DIR:
     ;ld a,'j'
     ;call CHPUT
     ;call PRINT
-    ld a,1
+    xor a
     ret
 
     endif
@@ -751,7 +754,7 @@ _HWF_ENUM_FILES_LOOP:
     pop bc
     pop de
     pop hl
-    cp USB_ERR_OK
+    cp CH_ST_INT_DISK_READ
     jr nz,_HWF_ENUM_FILES_END
 
     push bc
@@ -798,6 +801,112 @@ _HWF_ENUM_FILES_END:
     ret
 
     endif
+
+
+; -----------------------------------------------------------------------------
+; HWF_SEEK_FILE: Move the pointer of the currently mounted file
+; -----------------------------------------------------------------------------
+; Input:  HL:DE = New pointer
+; Output: A = 0: Ok
+;             1: End of file
+;             2: Other error
+
+HWF_SEEK_FILE:
+    if USE_FAKE_STORAGE_DEVICE = 1
+    xor a
+    ret
+    endif
+
+    ld a,CH_CMD_BYTE_LOCATE
+    out (CH_COMMAND_PORT),a
+    ld a,e
+    out (CH_DATA_PORT),a
+    ld a,d
+    out (CH_DATA_PORT),a
+    ld a,l
+    out (CH_DATA_PORT),a
+    ld a,h
+    out (CH_DATA_PORT),a
+
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    ld a,2
+    ret nz
+
+    ld a,CH_CMD_RD_USB_DATA0
+    out (CH_COMMAND_PORT),a
+    in a,(CH_DATA_PORT)
+    cp 4
+    ld a,2
+    ret nz
+
+    ;Read the current pointer, if it's FFFFFFFFh return end of file error
+    ld b,4
+    ld c,0FFh
+_HWF_SEEK_FILE_CUR_POINTER:
+    in a,(CH_DATA_PORT)
+    and c
+    ld c,a
+    djnz _HWF_SEEK_FILE_CUR_POINTER
+
+    ld a,c
+    inc a
+    ld a,1
+    ret z
+    dec a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_READ_FILE: Read the currently mounted file
+; -----------------------------------------------------------------------------
+; Input:  BC = How many bytes to read
+;         HL = Destination address
+; Output: A  = 0: Ok
+;              1: Error
+;         BC = How many bytes actually read
+
+HWF_READ_FILE:
+    if USE_FAKE_STORAGE_DEVICE=1
+    ld a,1
+    ld bc,2048
+    ret
+    endif
+
+    push hl
+    push hl
+    ld a,CH_CMD_BYTE_READ
+    out (CH_COMMAND_PORT),a
+    ld a,c
+    out (CH_DATA_PORT),a
+    ld a,b
+    out (CH_DATA_PORT),a
+
+_HWF_READ_FILE_LOOP:
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    jr z,_HWF_READ_FILE_END
+    cp CH_ST_INT_DISK_READ
+    ld a,1
+    jr nz,_HWF_READ_FILE_END
+
+    pop hl
+    call CH_READ_DATA
+    push hl
+
+    ld a,CH_CMD_BYTE_RD_GO
+    out (CH_COMMAND_PORT),a
+
+    jr _HWF_READ_FILE_LOOP
+
+_HWF_READ_FILE_END:
+    pop hl  ;Address after the last byte retrieved
+    pop de  ;Initial dest address
+    or a
+    sbc hl,de
+    push hl
+    pop bc
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -993,7 +1102,7 @@ _CH_WAIT_INT_AND_GET_RESULT_2:
     cp CH_ST_INT_SUCCESS
     jr z,_CH_LD_A_B_RET
     cp CH_ST_INT_DISK_READ
-    jr z,_CH_LD_A_B_RET
+    ret z
     cp CH_ST_INT_DISCONNECT
     jr z,_CH_NO_DEV_ERR
     cp CH_ST_INT_BUF_OVER

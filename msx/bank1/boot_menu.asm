@@ -20,6 +20,7 @@ DO_BOOT_MENU:
 
     ; Try opening DSK directory on the device
 
+    if USE_FAKE_STORAGE_DEVICE = 0
     ld hl,BM_ROOT_DIR_S
     call HWF_OPEN_FILE_DIR
     dec a
@@ -29,6 +30,7 @@ DO_BOOT_MENU:
     call HWF_OPEN_FILE_DIR
     dec a
     ret nz
+    endif
 
     ; Init screen mode, draw fixed elements
 
@@ -189,13 +191,19 @@ BM_START_OVER:
 
 BM_DO_ENTER:
     ld hl,(BM_CUR_FILE_PNT)
+
+    push hl
+    pop ix
+    bit 7,(ix+10)
+    jp nz,_BM_MAIN_LOOP ;For now entering directories is not supported
+
     ld de,BM_BUF
     call BM_GENERATE_FILENAME
     ld hl,BM_BUF
     
     call HWF_OPEN_FILE_DIR
     or a
-    ret z   ;Continue computer boot process
+    jr z,_BM_DO_ENTER_FILE_IS_OPEN
 
     dec a
     jp z,_BM_MAIN_LOOP  ;TODO: handle entering directory
@@ -214,6 +222,11 @@ _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
     jr z,_BM_DO_ENTER_WAIT_RELEASE
     jp _BM_MAIN_LOOP
 
+_BM_DO_ENTER_FILE_IS_OPEN:
+    call WK_GET_STORAGE_DEV_FLAGS
+    or 1    ;There's a file open
+    call WK_SET_STORAGE_DEV_FLAGS
+    ret ;Continue computer boot process
 
 ;--- Print the string HL in the status area and wait for a key press
 
