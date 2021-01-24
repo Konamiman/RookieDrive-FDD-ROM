@@ -1033,7 +1033,7 @@ BM_HELP_2:
 ; Variables
 ; -----------------------------------------------------------------------------
 
-_BM_VARS_BASE: equ 0E000h
+_BM_VARS_BASE: equ 0C800h
 
 BM_NUM_PAGES: equ _BM_VARS_BASE
 BM_CUR_PAGE:  equ BM_NUM_PAGES+1

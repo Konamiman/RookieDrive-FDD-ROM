@@ -60,6 +60,9 @@ _DSKIO_OK_UNIT:
     call WK_GET_STORAGE_DEV_FLAGS
     jp nz,_DSKIO_IMPL_STDEV
 
+
+    ;--- DSKIO for floppy disk drives ---
+
     ld a,b
     pop bc
     rrc c   ;Now C:7 = 0 to read, 1 to write
@@ -121,22 +124,8 @@ _DSKIO_OK_CMD:
     ;* Check if we can transfer sectors directly or we need to transfer one by one.
     ;* We'll start with one by one transfer if page 1 is involved in the transfer.
 
-    bit 7,d
-    jr nz,_DSKIO_DIRECT_TRANSFER    ;Transfer starts at >= 8000h
-    bit 6,d
-    jr nz,_DSKIO_ONE_BY_ONE         ;Transfer starts at >= 4000h and <8000h
-    push de
-    push bc
-    ex de,hl
-    sla b
-    ld c,0  ;BC = Sectors * 512
-    add hl,bc
-    dec hl  ;Now HL = Last transfer address
-    pop bc
-    pop de
-    ld a,h
-    cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
-    jr nc,_DSKIO_ONE_BY_ONE
+    call CHECK_XFER_IS_NEEDED
+    jr c,_DSKIO_ONE_BY_ONE
 
     ;>>> Direct transfer
     ;    We transfer sectors directly from/to the source/target address,
@@ -375,8 +364,14 @@ _DSKIO_IMPL_STDEV:
 _DSKIO_IMPL_STDEV_SEEKOK:
     ld b,c
 
-    ;TODO: use XFER if necessary
+    ex de,hl
+    call CHECK_XFER_IS_NEEDED
+    ex de,hl
+    jr c,_DSKIO_IMPL_STDEV_XFER
 
+    ;* Direct transfer
+
+_DSKIO_IMPL_STDEV_DIRECT:
     sla b
     ld c,0  ;BC = B*512
     call HWF_READ_FILE
@@ -390,9 +385,88 @@ _DSKIO_IMPL_STDEV_SEEKOK:
     xor a
     ret
 
+    ;* Transfer using XFER
+
+_DSKIO_IMPL_STDEV_XFER:
+    ld c,0
+_DSKIO_IMPL_STDEV_XFER_LOOP:
+    push bc ;B=Sectors left, C=Sectors transferred
+    push hl ;Dest address
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call HWF_READ_FILE
+    or a
+    jr nz,_DSKIO_IMPL_STDEV_XFER_ERR
+    ld a,b
+    cp 2
+    jr c,_DSKIO_IMPL_STDEV_XFER_ERR ;Error if less than 1 sector transferred
+
+    pop de
+    push de
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call CALL_XFER
+
+    pop hl
+    pop bc
+    inc c
+    inc h
+    inc h   ;HL=HL+512
+    djnz _DSKIO_IMPL_STDEV_XFER_LOOP
+
+    ld b,c
+    xor a
+    ret
+
+_DSKIO_IMPL_STDEV_XFER_ERR:
+    pop hl
+    pop bc
+    ld b,c
+    ld a,12
+    scf
+    ret
+
 _DSKIO_ERR_WPROT:
     xor a
+    ld b,0
     scf
+    ret
+
+
+    ;-- Check if transfer can be done directly or if we need to use XFER
+    ;   (XFER will be needed if page 1 is involved in the transfer).
+    ;
+    ;   Input:  DE = Transfer address
+    ;           B  = How many sectors to transfer
+    ;   Output: Cy = 0 if direct transfer is possible
+    ;                1 if XFER is needed
+
+CHECK_XFER_IS_NEEDED:
+    ld a,(XFER)
+    cp 0C9h
+    ret z   ;Sanity check: we can't use XFER if it isn't enabled
+
+    bit 7,d
+    scf
+    ccf
+    ret nz    ;Transfer starts at >= 8000h, so direct ok
+    bit 6,d
+    scf
+    ret nz    ;Transfer starts at >= 4000h and <8000h, so XFER needed
+    push de
+    push bc
+    ex de,hl
+    sla b
+    ld c,0  ;BC = Sectors * 512
+    add hl,bc
+    dec hl  ;Now HL = Last transfer address
+    pop bc
+    pop de
+    ld a,h
+    cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
+    ccf
     ret
 
 

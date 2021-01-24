@@ -865,6 +865,7 @@ _HWF_SEEK_FILE_CUR_POINTER:
 ; Output: A  = 0: Ok
 ;              1: Error
 ;         BC = How many bytes actually read
+;         HL = Address after last byte read
 
 HWF_READ_FILE:
     if USE_FAKE_STORAGE_DEVICE=1
@@ -902,10 +903,12 @@ _HWF_READ_FILE_LOOP:
 _HWF_READ_FILE_END:
     pop hl  ;Address after the last byte retrieved
     pop de  ;Initial dest address
+    push hl
     or a
     sbc hl,de
     push hl
     pop bc
+    pop hl
     ret
 
 
