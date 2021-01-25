@@ -61,9 +61,19 @@ namespace Konamiman.RookieDrive.Sandbox
                 foreach (var name in files)
                     Console.WriteLine(name);
 
+                Console.WriteLine("Writing file... " + hw.WriteFileContents("NBASIC.TXT", longString));
                 Console.WriteLine();
-                Console.WriteLine("Contents of DSK/DRIVER.ASM:");
-                Console.Write(hw.ReadFileContents("DRIVER.ASM"));
+
+                Console.WriteLine();
+                if (!hw.ChangeDir("/DSK"))
+                {
+                    Console.WriteLine("*** Can't change to dir DSK");
+                }
+                else
+                {
+                    Console.WriteLine("Contents of DSK/NBASIC.TXT:");
+                    Console.Write(hw.ReadFileContents("NBASIC.TXT"));
+                }
             }
             Console.ReadKey();
             return;
@@ -339,5 +349,17 @@ namespace Konamiman.RookieDrive.Sandbox
                 Console.WriteLine();
             }
         }
+
+        const string longString = @"NestorBASIC 1.0 release date is july 2003, whilst the last beta, version 0.07, was released in july 1998. Yes, the NestorBASIC project has remained abandoned for exactly five years.
+
+The story is as follows. In 1998 a technical failure (the SCSI cable I used those days was bullshit) caused a crash in my computer, and when restarting I discovered that the FAT of the hard disk partition where my programs were stored was completely smashed. With a lot of patience and a sectors editor I could recover almost all of the source codes, but one of the lost ones was NestorBASIC.
+
+And you may ask: ""But you hadn't any backup copy?"" Yes, I had the NestorBASIC directory mirrored in another partition of the hard disk... but it was version 0.06, and a lot of changes were made when stepping to version 0.07. So, since NestorBASIC 0.07 was already quite complete, I decided to abandon the project.
+
+And time passed...until may 2003. While I was looking at Kyoko playing Bubble Rain, I began to think: ""It is really a nice game, and the best part is that it uses NestorBASIC, what a pity that I lost the source code... it is the only of my programs that are used regularly by other MSX users (more or less), if I could only recover it and improve it a little... blah blah...""
+
+So I took a crazy decision: I would dissassemble NestorBASIC 0.07 and, comparing the result with the sources of version 0.06, I would rebuild the lost sources and from that point I would make version 1.0. And I really did it: one month of hard work later, NestorBASIC 1.0 was released, with a lot of failures corrected and with support for InterNestor Suite.
+
+I hope that it was worth the effort, and that soon MSX programmers around the world will develop a lot of games and internet applications using NestorBASIC (well, just daydreaming).";
     }
 }

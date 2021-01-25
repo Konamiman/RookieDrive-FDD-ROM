@@ -42,6 +42,10 @@ namespace Konamiman.RookieDrive.Usb
         const byte CMD_BYTE_LOCATE = 0x39;
         const byte CMD_BYTE_READ = 0x3A;
         const byte CMD_BYTE_RD_GO = 0x3B;
+        const byte CMD_WR_REQ_DATA = 0x2D;
+        const byte CMD_BYTE_WRITE = 0x3C;
+        const byte CMD_BYTE_WRITE_GO = 0x3D;
+        const byte CMD_FILE_CREATE = 0x34;
 
         private readonly ICH376Ports ch;
         private static readonly byte[] noData = new byte[0];
@@ -468,6 +472,75 @@ namespace Konamiman.RookieDrive.Usb
                 }
                 while (result == UsbPacketResult.USB_INT_DISK_READ);
             }
+        }
+
+        public string WriteFileContents(string filename, string contents)
+        {
+            UsbPacketResult result;
+
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes(filename + "\0"));
+            ch.WriteCommand(CMD_FILE_OPEN);
+            result = WaitAndGetResult();
+            if(result == UsbPacketResult.ERR_MISS_FILE)
+            {
+                Console.WriteLine(">>> File doesn't exist, creating");
+                ch.WriteCommand(CMD_FILE_CREATE);
+                result = WaitAndGetResult();
+                if (result != UsbPacketResult.Ok)
+                {
+                    return "*** Error creating file: received " + result.ToString();
+                }
+            }
+            if (result != UsbPacketResult.Ok)
+                return "*** Error opening file: " + result.ToString();
+
+            var bytesToWrite = Encoding.ASCII.GetBytes(contents);
+
+            ch.WriteCommand(CMD_BYTE_WRITE);
+            ch.WriteData((byte)(bytesToWrite.Length & 0xFF));
+            ch.WriteData((byte)(bytesToWrite.Length >> 8));
+            result = WaitAndGetResult();
+
+            while(result != UsbPacketResult.Ok)
+            {
+                if(result != UsbPacketResult.USB_INT_DISK_WRITE)
+                {
+                    return "*** Error writing file: received " + result.ToString();
+                }
+
+                ch.WriteCommand(CMD_WR_REQ_DATA);
+                var nextChunkSize = ch.ReadData();
+                var chunk = bytesToWrite.Take(nextChunkSize).ToArray();
+                //For some reason CH376PortsViaNoobtocol.WriteMultipleData doesn't work for 255 bytes...
+                for (int i = 0; i < chunk.Length; i++) ch.WriteData(chunk[i]);
+                //ch.WriteMultipleData(chunk);
+
+                bytesToWrite = bytesToWrite.Skip(nextChunkSize).ToArray();
+
+                ch.WriteCommand(CMD_BYTE_WRITE_GO);
+                result = WaitAndGetResult();
+            }
+
+            ch.WriteCommand(CMD_BYTE_WRITE);
+            ch.WriteData(0);
+            ch.WriteData(0);
+            result = WaitAndGetResult();
+            if(result != UsbPacketResult.Ok)
+            {
+                return "*** Error updating file dir entry after write: " + result.ToString();
+            }
+
+            return ">>> Write ok!";
+        }
+
+        public bool ChangeDir(string dir)
+        {
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes(dir + "\0"));
+            ch.WriteCommand(CMD_FILE_OPEN);
+            var result = WaitAndGetResult();
+            return result == UsbPacketResult.ERR_OPEN_DIR;
         }
     }
 }
