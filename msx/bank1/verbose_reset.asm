@@ -270,4 +270,4 @@ ERR_INQUIRY_S:
     db  "ERROR querying the device name: ",0
 
 STOR_FOUND_S:
-    db "USB storage device found:",13,10,0
+    db "USB storage device found: ",0

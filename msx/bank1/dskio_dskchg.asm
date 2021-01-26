@@ -61,7 +61,7 @@ _DSKIO_OK_UNIT:
     jp nz,_DSKIO_IMPL_STDEV
 
 
-    ;--- DSKIO for floppy disk drives ---
+    ;=== DSKIO for floppy disk drives ===
 
     ld a,b
     pop bc
@@ -329,13 +329,9 @@ CALL_XFER:
     ret
 
 
-    ;--- DSKIO for storage devices (mounted file) ---
+    ;=== DSKIO for storage devices (mounted file) ===
 
 _DSKIO_IMPL_STDEV:
-    pop af
-
-    jp c,_DSKIO_ERR_WPROT   ;No write support for now
-
     push hl
     push bc
 
@@ -354,6 +350,8 @@ _DSKIO_IMPL_STDEV:
     ld b,0
     or a
     jr z,_DSKIO_IMPL_STDEV_SEEKOK
+
+    pop hl  ;Discard input AF
     dec a
     ld a,8  ;Record not found
     scf
@@ -364,14 +362,21 @@ _DSKIO_IMPL_STDEV:
 _DSKIO_IMPL_STDEV_SEEKOK:
     ld b,c
 
+    pop af
+    jp c,_DSKIO_IMPL_STDEW_WRITE
+
+
+    ;=== DSKIO for storage devices - READ ===
+
+_DSKIO_IMPL_STDEW_READ:
     ex de,hl
     call CHECK_XFER_IS_NEEDED
     ex de,hl
-    jr c,_DSKIO_IMPL_STDEV_XFER
+    jr c,_DSKIO_R_STDEV_XFER
 
     ;* Direct transfer
 
-_DSKIO_IMPL_STDEV_DIRECT:
+_DSKIO_R_STDEV_DIRECT:
     sla b
     ld c,0  ;BC = B*512
     call HWF_READ_FILE
@@ -387,9 +392,9 @@ _DSKIO_IMPL_STDEV_DIRECT:
 
     ;* Transfer using XFER
 
-_DSKIO_IMPL_STDEV_XFER:
+_DSKIO_R_STDEV_XFER:
     ld c,0
-_DSKIO_IMPL_STDEV_XFER_LOOP:
+_DSKIO_R_STDEV_XFER_LOOP:
     push bc ;B=Sectors left, C=Sectors transferred
     push hl ;Dest address
 
@@ -414,23 +419,77 @@ _DSKIO_IMPL_STDEV_XFER_LOOP:
     inc c
     inc h
     inc h   ;HL=HL+512
-    djnz _DSKIO_IMPL_STDEV_XFER_LOOP
+    djnz _DSKIO_R_STDEV_XFER_LOOP
 
     ld b,c
     xor a
     ret
+
+
+    ;=== DSKIO for storage devices - WRITE ===
+
+_DSKIO_IMPL_STDEW_WRITE:
+    ex de,hl
+    call CHECK_XFER_IS_NEEDED
+    ex de,hl
+    jr c,_DSKIO_W_STDEV_XFER
+
+    ;* Direct transfer
+
+_DSKIO_W_STDEV_DIRECT:
+    sla b
+    ld c,0  ;BC = B*512
+    call HWF_WRITE_FILE
+    srl b  ;B = BC/512
+
+    or a
+    ld a,12
+    scf
+    ret nz
+    
+    xor a
+    ret
+
+    ;* Transfer using XFER
+
+_DSKIO_W_STDEV_XFER:
+    ld c,0
+_DSKIO_W_STDEV_XFER_LOOP:
+    push bc ;B=Sectors left, C=Sectors transferred
+    push hl ;Src address
+
+    ld de,(SECBUF)
+    ld bc,512
+    call CALL_XFER
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call HWF_WRITE_FILE
+    or a
+    jr nz,_DSKIO_IMPL_STDEV_XFER_ERR
+    ld a,b
+    cp 2
+    jr c,_DSKIO_IMPL_STDEV_XFER_ERR ;Error if less than 1 sector transferred
+
+    pop hl
+    pop bc
+    inc c
+    inc h
+    inc h   ;HL=HL+512
+    djnz _DSKIO_W_STDEV_XFER_LOOP
+
+    ld b,c
+    xor a
+    ret
+
+
+    ;=== DSKIO for storage devices - common ===
 
 _DSKIO_IMPL_STDEV_XFER_ERR:
     pop hl
     pop bc
     ld b,c
     ld a,12
-    scf
-    ret
-
-_DSKIO_ERR_WPROT:
-    xor a
-    ld b,0
     scf
     ret
 

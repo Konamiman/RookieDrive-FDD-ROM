@@ -65,6 +65,7 @@ CH_CMD_ABORT_NAK: equ 17h
 CH_CMD_GET_STATUS: equ 22h
 CH_CMD_RD_USB_DATA0: equ 27h
 CH_CMD_WR_HOST_DATA: equ 2Ch
+CH_CMD_WR_REQ_DATA: equ 2Dh
 CH_CMD_SET_FILE_NAME: equ 2Fh
 CH_CMD_DISK_CONNECT: equ 30h
 CH_CMD_DISK_MOUNT: equ 31h
@@ -74,6 +75,8 @@ CH_CMD_FILE_CLOSE: equ 36h
 CH_CMD_BYTE_LOCATE: equ 39h
 CH_CMD_BYTE_READ: equ 3Ah
 CH_CMD_BYTE_RD_GO: equ 3Bh
+CH_CMD_BYTE_WRITE: equ 3Ch
+CH_CMD_BYTE_WRITE_GO: equ 3Dh
 CH_CMD_SET_ADDRESS: equ 45h
 CH_CMD_GET_DESCR: equ 46h
 CH_CMD_SET_CONFIG: equ 49h
@@ -913,6 +916,75 @@ _HWF_READ_FILE_END:
 
 
 ; -----------------------------------------------------------------------------
+; HWF_WRITE_FILE: Write to the currently mounted file
+; -----------------------------------------------------------------------------
+; Input:  BC = How many bytes to write
+;         HL = Source address
+; Output: A  = 0: Ok
+;              1: Error
+;         BC = How many bytes actually read
+;         HL = Address after last byte written
+
+HWF_WRITE_FILE:
+    if USE_FAKE_STORAGE_DEVICE=1
+    ld a,1
+    ld bc,2048
+    ret
+    endif
+
+    push hl
+    push hl
+    ld a,CH_CMD_BYTE_WRITE
+    out (CH_COMMAND_PORT),a
+    ld a,c
+    out (CH_DATA_PORT),a
+    ld a,b
+    out (CH_DATA_PORT),a
+
+_HWF_WRITE_FILE_LOOP:
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    jr z,_HWF_WRITE_FILE_END
+    cp CH_ST_INT_DISK_WRITE
+    ld a,1
+    jr nz,_HWF_WRITE_FILE_END
+
+    ld a,CH_CMD_WR_REQ_DATA
+    out (CH_COMMAND_PORT),a
+    in a,(CH_DATA_PORT)
+    ld b,a
+
+    pop hl
+    ld c,CH_DATA_PORT
+    otir
+    push hl
+
+    ld a,CH_CMD_BYTE_WRITE_GO
+    out (CH_COMMAND_PORT),a
+
+    jr _HWF_WRITE_FILE_LOOP
+
+_HWF_WRITE_FILE_END:
+    push af
+    ld a,CH_CMD_BYTE_WRITE
+    out (CH_COMMAND_PORT),a
+    xor a
+    out (CH_DATA_PORT),a
+    out (CH_DATA_PORT),a
+    pop af
+
+    pop hl  ;Address after the last byte written
+    pop de  ;Initial src address
+    push hl
+    or a
+    sbc hl,de
+    push hl
+    pop bc
+    pop hl
+    ret
+
+
+; -----------------------------------------------------------------------------
 ; Optional shortcut routines
 ; -----------------------------------------------------------------------------    
 
@@ -1105,6 +1177,8 @@ _CH_WAIT_INT_AND_GET_RESULT_2:
     cp CH_ST_INT_SUCCESS
     jr z,_CH_LD_A_B_RET
     cp CH_ST_INT_DISK_READ
+    ret z
+    cp CH_ST_INT_DISK_WRITE
     ret z
     cp CH_ST_INT_DISCONNECT
     jr z,_CH_NO_DEV_ERR
