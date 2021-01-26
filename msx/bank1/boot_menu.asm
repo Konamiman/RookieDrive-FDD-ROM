@@ -226,6 +226,11 @@ _BM_DO_ENTER_FILE_IS_OPEN:
     call WK_GET_STORAGE_DEV_FLAGS
     or 1    ;There's a file open
     call WK_SET_STORAGE_DEV_FLAGS
+
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_MOUNTING_BOOTING_S
+    call BM_PRINT_STATUS
+
     ret ;Continue computer boot process
 
 ;--- Print the string HL in the status area and wait for a key press
@@ -996,6 +1001,9 @@ BM_FILE_NOT_FOUND_S:
 
 BM_ERROR_OPENING_FILE_S:
     db "Error opening file/dir! Press any key",0
+
+BM_MOUNTING_BOOTING_S:
+    db "Mounting file and booting...",0
 
 BM_HELP_1:
     db " Cursors: select file or directory",13,10
