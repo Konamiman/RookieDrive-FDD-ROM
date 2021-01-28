@@ -6,7 +6,7 @@
 ; standard USB mass storage device is plugged in).
 
 BM_FILES_BASE: equ 8010h
-
+BM_MAX_DIR_NAME_LENGTH: equ 64
 
 ; -----------------------------------------------------------------------------
 ; Boot menu entry point
@@ -17,6 +17,15 @@ DO_BOOT_MENU:
     xor a
     ld (BM_CURSOR_LAST),a
     ld (BM_NO_STOR_DEV),a
+
+    ld hl,BM_DSK_S
+    ld de,BM_CUR_DIR
+    ld bc,5
+    ldir
+    ld a,1
+    ld (BM_CUR_DIR_LEVEL),a
+    ld a,4
+    ld (BM_CUR_DIR_LENGTH),a
 
     ; Try opening DSK directory on the device
 
@@ -47,66 +56,8 @@ DO_BOOT_MENU:
     call POSIT
     call BM_DRAW_LINE
 
-    ld h,2
-    ld l,1
-    call POSIT
-    ld a,"/"
-    call CHPUT
-
-    ; Enumerate files, initialize paging
-
-    ld a,1
-    ld (BM_CUR_PAGE),a
-
-    ld hl,BM_SCANNING_DIR_S
-    call BM_PRINT_STATUS
-
-    ld hl,BM_FILES_BASE
-    ld bc,1290
-    call HWF_ENUM_FILES
-    ld (BM_NUM_FILES),bc
-    push bc
-
-    push hl ;Fill one extra page of 0s.
-    pop de  ;This will be used to detect non-existing
-    inc de  ;file positions in the last page.
-    ld (hl),0
-    ld bc,59*11-1
-    ldir
-
-    pop hl
-    ld b,0
-_BM_CALC_NUM_PAGES:
-    ld a,h
-    or a
-    jr nz,_BM_CALC_NUM_PAGES_ADD
-    ld a,l
-    or a
-    jr z,_BM_CALC_NUM_PAGES_END
-    cp 60
-    jr nc,_BM_CALC_NUM_PAGES_ADD
-
-    inc b
-    jr _BM_CALC_NUM_PAGES_END
-
-_BM_CALC_NUM_PAGES_ADD:
-    inc b
-    ld de,60
-    or a
-    sbc hl,de
-    jr _BM_CALC_NUM_PAGES
-
-_BM_CALC_NUM_PAGES_END:
-    ld a,b
-    or a
-    jr nz,_BM_CALC_NUM_PAGES_END_2
-    inc a
-_BM_CALC_NUM_PAGES_END_2:
-    ld (BM_NUM_PAGES),a
-
-    xor a
-    ld (BM_CUR_ROW),a
-    ld (BM_CUR_COL),a
+    call BM_PRINT_CUR_DIR
+    call BM_ENUM_FILES
 
 
 ; -----------------------------------------------------------------------------
@@ -124,7 +75,10 @@ BM_ENTER_MAIN_LOOP:
     call BM_UPDATE_CUR_PAGE_PNT
     call BM_UPDATE_CUR_FILE_PNT
     call BM_POSIT_CUR_FILE
-    call BM_PRINT_CURRENT_FILE_AS_SELECTED
+    ld hl,(BM_NUM_FILES)
+    ld a,h
+    or l
+    call nz,BM_PRINT_CURRENT_FILE_AS_SELECTED
 
 ;--- This is the actual start of the loop
 
@@ -142,6 +96,9 @@ _BM_MAIN_LOOP:
 
     call BM_ENTER_IS_PRESSED
     jp z,BM_DO_ENTER
+
+    call BM_BS_IS_PRESSED
+    jp z,BM_DO_BS
 
     call BM_F1_IS_PRESSED
     jp z,BM_DO_HELP
@@ -165,6 +122,9 @@ BM_START_OVER:
     ld (BM_NUM_PAGES),a
 
     call BM_CLEAR_INFO_AREA
+    xor a
+    ld (BM_CUR_DIR+1),a
+    call BM_PRINT_CUR_DIR
     ld hl,BM_RESETTING_DEVICE_S
     call BM_PRINT_STATUS
 
@@ -193,21 +153,22 @@ BM_DO_ENTER:
     ld hl,(BM_CUR_FILE_PNT)
 
     push hl
-    pop ix
-    bit 7,(ix+10)
-    jp nz,_BM_MAIN_LOOP ;For now entering directories is not supported
-
     ld de,BM_BUF
     call BM_GENERATE_FILENAME
+    pop ix
+    bit 7,(ix+10)
+    jp nz,BM_DO_ENTER_DIR
+
+    ;* It's a file
+
+BM_DO_ENTER_FILE:
     ld hl,BM_BUF
-    
     call HWF_OPEN_FILE_DIR
     or a
     jr z,_BM_DO_ENTER_FILE_IS_OPEN
 
-    dec a
-    jp z,_BM_MAIN_LOOP  ;TODO: handle entering directory
-
+_BM_DO_ENTER_OPEN_ERR: 
+    dec a   ;It's a dir: treat as other error (should never happen)
     dec a
     ld hl,BM_FILE_NOT_FOUND_S
     jr z,_BM_DO_ENTER_PRINT_ERR
@@ -231,7 +192,62 @@ _BM_DO_ENTER_FILE_IS_OPEN:
     ld hl,BM_MOUNTING_BOOTING_S
     call BM_PRINT_STATUS
 
+    call KILBUF
     ret ;Continue computer boot process
+
+    ;* It's a directory
+
+BM_DO_ENTER_DIR:
+    ld hl,BM_BUF
+    ld c,"/"
+    call BM_STRLEN_C
+    ld (hl),0
+    inc b   ;Count also the additional "/"
+    ld a,(BM_CUR_DIR_LENGTH)
+    add b
+    cp BM_MAX_DIR_NAME_LENGTH+1
+    jp nc,_BM_MAIN_LOOP     ;Max dir length surpassed: can't change dir
+
+    ld hl,BM_BUF
+    call HWF_OPEN_FILE_DIR
+    cp 1
+    jp nz,_BM_DO_ENTER_OPEN_ERR
+
+    ld hl,BM_CUR_DIR_LEVEL
+    inc (hl)
+
+    ld a,(BM_CUR_DIR_LENGTH)
+    ld e,a
+    ld d,0
+    ld hl,BM_CUR_DIR
+    add hl,de
+
+    ld a,(BM_CUR_DIR_LEVEL)
+    cp 1
+    jr z,_BM_DO_ENTER_DIR_WAS_ROOT
+    ld (hl),"/"
+    inc hl
+_BM_DO_ENTER_DIR_WAS_ROOT:
+
+    ex de,hl
+    ld hl,BM_BUF
+_BM_COPY_DIR_NAME_LOOP:
+    ld a,(hl)
+    ld (de),a
+    inc hl
+    inc de
+    or a
+    jr nz,_BM_COPY_DIR_NAME_LOOP
+
+    ld hl,BM_CUR_DIR
+    call BM_STRLEN
+    ld a,b
+    ld (BM_CUR_DIR_LENGTH),a
+
+    call BM_PRINT_CUR_DIR
+    call BM_ENUM_FILES
+    jp BM_ENTER_MAIN_LOOP
+
 
 ;--- Print the string HL in the status area and wait for a key press
 
@@ -240,6 +256,90 @@ BM_PRINT_STATUS_WAIT_KEY:
     call KILBUF
     call CHGET  ;TODO: This displays cursor, somehow hide
     jp KILBUF
+
+
+;--- BS key press handler
+;
+;    The CH376 doesn't support opening ".." so we'll have to
+;    cd to root and then to each dir on the current path
+;    stopping right before the last one :facepalm:
+
+BM_DO_BS:
+    ld a,(BM_CUR_DIR_LEVEL)
+    or a
+    jp z,_BM_MAIN_LOOP  ;We are in the root dir already
+
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_ENTERING_DIR_S
+    call BM_PRINT_STATUS
+
+    ld hl,BM_ROOT_DIR_S
+    call HWF_OPEN_FILE_DIR
+    cp 1
+    jr z,_BM_DO_BS_OPEN_ROOT_OK
+
+_BM_DO_BS_OPEN_ERROR:
+    xor a
+    ld (BM_CUR_DIR+1),a
+    call BM_PRINT_CUR_DIR
+    ld hl,BM_ERROR_OPENING_FILE_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    xor a
+    ld (BM_NUM_FILES),a
+    ld (BM_NUM_FILES+1),a
+    inc a
+    ld (BM_NUM_PAGES),a
+    ld (BM_CUR_PAGE),a
+    ld (BM_CUR_DIR_LENGTH),a
+    jp BM_ENTER_MAIN_LOOP
+_BM_DO_BS_OPEN_ROOT_OK:
+
+    ld a,(BM_CUR_DIR_LEVEL)
+    dec a
+    jp z,_BM_DO_BS_LV1_END
+    ld b,a  ;How many levels to go back
+    ld hl,BM_CUR_DIR  ;Pointer to dir at current level, -1
+
+_BM_DO_BS_LOOP:
+    push bc
+    push hl
+    ld (hl),"/"
+    inc hl
+_BM_DO_BS_FIND_SLASH:
+    ld a,(hl)
+    inc hl
+    cp "/"
+    jr nz,_BM_DO_BS_FIND_SLASH
+
+    dec hl
+    ld (hl),0
+    ex (sp),hl  ;Now HL=Start of dir name-1, (SP)=Terminator
+    inc hl
+    call HWF_OPEN_FILE_DIR
+    pop hl
+    pop bc
+    cp 1
+    jr nz,_BM_DO_BS_OPEN_ROOT_OK
+
+    djnz _BM_DO_BS_LOOP
+
+_BM_DO_BS_END:
+    ld hl,BM_CUR_DIR_LEVEL
+    dec (hl)
+_BM_DO_BS_END_2:
+    ld hl,BM_CUR_DIR
+    call BM_STRLEN
+    ld a,b
+    ld (BM_CUR_DIR_LENGTH),a
+    call BM_PRINT_CUR_DIR
+    call BM_ENUM_FILES
+    jp BM_ENTER_MAIN_LOOP
+
+_BM_DO_BS_LV1_END:
+    xor a
+    ld (BM_CUR_DIR+1),a
+    ld (BM_CUR_DIR_LEVEL),a
+    jr _BM_DO_BS_END_2
 
 
 ;--- Help loop, entered when F1 is pressed
@@ -426,6 +526,66 @@ _BM_UPDATE_PAGE_END:
     ld (BM_CUR_ROW),a
     ld (BM_CUR_COL),a
     jp BM_ENTER_MAIN_LOOP
+
+
+    ;--- Enumerate files and initialize paging
+
+BM_ENUM_FILES:
+    ld a,1
+    ld (BM_CUR_PAGE),a
+
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_SCANNING_DIR_S
+    call BM_PRINT_STATUS
+
+    ld hl,BM_FILES_BASE
+    ld bc,1290
+    call HWF_ENUM_FILES
+    ld (BM_NUM_FILES),bc
+    push bc
+
+    push hl ;Fill one extra page of 0s.
+    pop de  ;This will be used to detect non-existing
+    inc de  ;file positions in the last page.
+    ld (hl),0
+    ld bc,59*11-1
+    ldir
+
+    pop hl
+    ld b,0
+_BM_CALC_NUM_PAGES:
+    ld a,h
+    or a
+    jr nz,_BM_CALC_NUM_PAGES_ADD
+    ld a,l
+    or a
+    jr z,_BM_CALC_NUM_PAGES_END
+    cp 60
+    jr nc,_BM_CALC_NUM_PAGES_ADD
+
+    inc b
+    jr _BM_CALC_NUM_PAGES_END
+
+_BM_CALC_NUM_PAGES_ADD:
+    inc b
+    ld de,60
+    or a
+    sbc hl,de
+    jr _BM_CALC_NUM_PAGES
+
+_BM_CALC_NUM_PAGES_END:
+    ld a,b
+    or a
+    jr nz,_BM_CALC_NUM_PAGES_END_2
+    inc a
+_BM_CALC_NUM_PAGES_END_2:
+    ld (BM_NUM_PAGES),a
+
+    xor a
+    ld (BM_CUR_ROW),a
+    ld (BM_CUR_COL),a
+    ret
+
 
 ; -----------------------------------------------------------------------------
 ; Screen printing routines
@@ -756,6 +916,53 @@ _BM_PRINT_INVERTED_LOOP:
     ret
 
 
+;--- Print the current directory in the top row
+
+BM_PRINT_CUR_DIR:
+    ld h,2
+    ld l,1
+    call POSIT
+
+    ld a,(BM_CUR_DIR_LENGTH)
+    cp 41
+    jr c,_BM_PRINT_CUR_DIR_DIRECT
+
+    ld hl,BM_DOTS_BAR_S
+    call PRINT
+
+    call BM_GET_LAST_DIR_PNT
+    call PRINT
+    jr _BM_PRINT_CUR_DIR_END
+
+_BM_PRINT_CUR_DIR_DIRECT:
+    ld hl,BM_CUR_DIR
+    call PRINT
+
+_BM_PRINT_CUR_DIR_END:
+    ld a,27
+    call CHPUT
+    ld a,'K'
+    jp CHPUT  ;Delete to end of line
+
+
+;--- Get pointer to the last part of the current directory name
+;    (assuming current dir is not root)
+
+BM_GET_LAST_DIR_PNT:
+    ld hl,BM_CUR_DIR
+    ld de,(BM_CUR_DIR_LENGTH)
+    ld d,0
+    add hl,de
+_BM_GET_LAST_DIR_PNT_LOOP:
+    dec hl
+    ld a,(hl)
+    cp "/"
+    jr nz,_BM_GET_LAST_DIR_PNT_LOOP
+
+    inc hl
+    ret
+
+
 ; -----------------------------------------------------------------------------
 ; Keyboard scanning routines
 ; -----------------------------------------------------------------------------
@@ -811,6 +1018,22 @@ _BM_ENTER_IS_PRESSED_WAIT_RELEASE:
     ld de,8007h
     call BM_KEY_CHECK
     jr z,_BM_ENTER_IS_PRESSED_WAIT_RELEASE
+    xor a
+    ret
+
+
+;--- Check if BS is pressed
+;    Output: Z if pressed, NZ if not
+
+BM_BS_IS_PRESSED:
+    ld de,2007h
+    jp BM_KEY_CHECK
+    ret nz
+
+_BM_BS_IS_PRESSED_WAIT_RELEASE:
+    ld de,2007h
+    call BM_KEY_CHECK
+    jr z,_BM_BS_IS_PRESSED_WAIT_RELEASE
     xor a
     ret
 
@@ -957,6 +1180,25 @@ _BM_MULT_60_LOOP:
     djnz _BM_MULT_60_LOOP
     ret
 
+
+;--- Calculate length of zero-terminated string
+;    Input:  HL = String
+;    Output: B  = Length
+;            HL points to the zero
+
+BM_STRLEN:
+    ld c,0
+BM_STRLEN_C:
+    ld b,0
+_BM_STRLEN_LOOP:
+    ld a,(hl)
+    cp c
+    ret z
+    inc hl
+    inc b
+    jr _BM_STRLEN_LOOP
+
+
 ; -----------------------------------------------------------------------------
 ; Text strings
 ; -----------------------------------------------------------------------------
@@ -982,7 +1224,7 @@ BM_ROOT_DIR_S:
     db "/",0
 
 BM_DSK_S:
-    db "DSK",0
+    db "/DSK",0
 
 BM_NO_FILES_S:
     db "No files found in current directory!",0
@@ -1004,6 +1246,15 @@ BM_ERROR_OPENING_FILE_S:
 
 BM_MOUNTING_BOOTING_S:
     db "Mounting file and booting...",0
+
+BM_ENTERING_DIR_S:
+    db "Entering directory...",0
+
+BM_DOTS_BAR_S:
+    db "/.../",0
+
+BM_DOTDOT_S:
+    db "..",0
 
 BM_HELP_1:
     db " Cursors: select file or directory",13,10
@@ -1053,3 +1304,6 @@ BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
 BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
 BM_CURSOR_LAST: equ BM_CUR_COL+1    ;Result of last call to BM_CURSOR_IS_PRESSED
 BM_NO_STOR_DEV: equ BM_CURSOR_LAST+1 ;FFh if F5 was pressed and no storage device was found
+BM_CUR_DIR_LEVEL: equ BM_NO_STOR_DEV+1  ;Current direcrory level, 0 is root
+BM_CUR_DIR: equ BM_CUR_DIR_LEVEL+1  ;Current directory, up to BM_MAX_DIR_NAME_LENGTH-1 chars + 0
+BM_CUR_DIR_LENGTH: equ BM_CUR_DIR+BM_MAX_DIR_NAME_LENGTH+1
