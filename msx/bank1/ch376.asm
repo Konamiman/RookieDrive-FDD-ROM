@@ -780,6 +780,16 @@ _HWF_ENUM_FILES_LOOP:
     pop bc
 
     ld a,(hl)   ;File attributes byte
+    bit 1,a     ;"Hidden" attribute set?
+    jr z,_HWF_ENUM_NO_HIDDEN
+
+    push bc
+    ld bc,-11
+    add hl,bc
+    pop bc
+    jr _HWF_ENUM_DIR_NEXT
+
+_HWF_ENUM_NO_HIDDEN:
     and 10h
     jr z,_HWF_ENUM_DIR_OK
     dec hl
