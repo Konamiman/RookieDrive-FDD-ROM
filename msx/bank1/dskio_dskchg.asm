@@ -429,6 +429,12 @@ _DSKIO_R_STDEV_XFER_LOOP:
     ;=== DSKIO for storage devices - WRITE ===
 
 _DSKIO_IMPL_STDEW_WRITE:
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 2   ;Read only?
+    ld a,0
+    scf
+    ret nz
+
     ex de,hl
     call CHECK_XFER_IS_NEEDED
     ex de,hl

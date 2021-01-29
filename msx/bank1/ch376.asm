@@ -72,6 +72,7 @@ CH_CMD_DISK_MOUNT: equ 31h
 CH_CMD_FILE_OPEN: equ 32h
 CH_CMD_FILE_ENUM_GO: equ 33h
 CH_CMD_FILE_CLOSE: equ 36h
+CH_CMD_DIR_INFO_READ: equ 37h
 CH_CMD_BYTE_LOCATE: equ 39h
 CH_CMD_BYTE_READ: equ 3Ah
 CH_CMD_BYTE_RD_GO: equ 3Bh
@@ -343,6 +344,7 @@ _CH_DATA_IN_LOOP:
     jr nz,_CH_DATA_IN_ERR   ;DONE if error
 
     call CH_READ_DATA
+    ld c,b
     ld b,0
     add ix,bc   ;Update received so far count
 _CH_DATA_IN_NO_MORE_DATA:
@@ -985,6 +987,41 @@ _HWF_WRITE_FILE_END:
 
 
 ; -----------------------------------------------------------------------------
+; HWF_GET_FILE_ATTR: Get attributes byte of currently mounted file
+; -----------------------------------------------------------------------------
+; Output: A  = 0: Ok
+;              1: Error
+;         B  = Attributes byte if ok
+
+HWF_GET_FILE_ATTR:
+    ld a,CH_CMD_DIR_INFO_READ
+    out (CH_COMMAND_PORT),a
+    ld a,0FFh
+    out (CH_DATA_PORT),a
+    push hl
+    push bc
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop bc
+    pop hl
+    cp USB_ERR_OK
+    ld a,1
+    ret nz
+
+    ld a,CH_CMD_RD_USB_DATA0
+    out (CH_COMMAND_PORT),a
+    ld c,CH_DATA_PORT
+    ld b,11+1   ;Discard bytes counter and filename
+    call _CH_READ_DISCARD_DATA_LOOP
+    in a,(c)    ;Attributes byte
+    ld e,a
+    ld b,20     ;Discard the rest of the directory info
+    call _CH_READ_DISCARD_DATA_LOOP
+    xor a
+    ld b,e
+    ret
+
+
+; -----------------------------------------------------------------------------
 ; Optional shortcut routines
 ; -----------------------------------------------------------------------------    
 
@@ -1340,8 +1377,8 @@ CH_ISSUE_TOKEN:
 ; Read data from the CH data buffer
 ;
 ; Input:  HL = Destination address for the data
-; Output: C  = Amount of data received (0-64)
-;         HL = HL + C
+; Output: B  = Amount of data received (0-64)
+;         HL = HL + B
 
 CH_READ_DATA:
     ld a,CH_CMD_RD_USB_DATA0
@@ -1361,13 +1398,13 @@ CH_READ_DATA:
 
     ld b,d
     inir
-    ld c,d
+    ld b,d
     ret
 
 _CH_READ_DISCARD_DATA_LOOP:
     in a,(c)
     djnz _CH_READ_DISCARD_DATA_LOOP
-    ld c,d
+    ld b,d
     ret
 
 

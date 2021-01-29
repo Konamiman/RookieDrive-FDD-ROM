@@ -184,8 +184,18 @@ _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
     jp _BM_MAIN_LOOP
 
 _BM_DO_ENTER_FILE_IS_OPEN:
+    call HWF_GET_FILE_ATTR
+    dec a
+    jr z,_BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK ;Error, assume not read-only
+    ld a,b    ;Attributes byte, read-only in bit 0
+    rla ;Now read-only in bit 1
+    and 2
+
+_BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK:
+    ld b,a
     call WK_GET_STORAGE_DEV_FLAGS
     or 1    ;There's a file open
+    or b    ;Maybe read-only flag
     call WK_SET_STORAGE_DEV_FLAGS
 
     call BM_CLEAR_INFO_AREA
@@ -258,7 +268,7 @@ BM_PRINT_STATUS_WAIT_KEY:
     jp KILBUF
 
 
-;--- BS key press handler
+;--- BS key press handler, go to parent directory
 ;
 ;    The CH376 doesn't support opening ".." so we'll have to
 ;    cd to root and then to each dir on the current path
@@ -303,7 +313,7 @@ _BM_DO_BS_OPEN_ROOT_OK:
 _BM_DO_BS_LOOP:
     push bc
     push hl
-    ld (hl),"/"
+    ld (hl),"/" ;Restore the slash we had zero-ed in the last loop step
     inc hl
 _BM_DO_BS_FIND_SLASH:
     ld a,(hl)
@@ -312,7 +322,7 @@ _BM_DO_BS_FIND_SLASH:
     jr nz,_BM_DO_BS_FIND_SLASH
 
     dec hl
-    ld (hl),0
+    ld (hl),0   ;Temporarily replace ending slash with 0 for HWF_OPEN_FILE_DIR
     ex (sp),hl  ;Now HL=Start of dir name-1, (SP)=Terminator
     inc hl
     call HWF_OPEN_FILE_DIR

@@ -37,6 +37,7 @@
 ;            (if a floppy is connected it'll be 0 since the byte holds
 ;             the OUT endpoint number)
 ;     bit 0: set to 1 if there's a file mounted
+;     bit 1: set if mounted in read only mode
 ; +1: Current directory depth:
 ;     0: no directory currently open
 ;     1: root directory, etc
