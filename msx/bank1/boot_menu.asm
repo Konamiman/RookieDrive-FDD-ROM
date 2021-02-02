@@ -10,10 +10,56 @@ BM_MAX_DIR_NAME_LENGTH: equ 64
 
 ; -----------------------------------------------------------------------------
 ; Boot menu entry point
+;
+; Output: A=0 if the menu was actually opened
+;           1 if no storage device was found
+;           2 if not enough memory
 ; -----------------------------------------------------------------------------
 
 DO_BOOT_MENU:
 
+    ;Return with error if no storage device was found
+
+    call USB_CHECK_DEV_CHANGE
+
+    call WK_GET_STORAGE_DEV_FLAGS
+    ld a,1
+    ret z
+
+    ;Return with error if we have less than 1K of free space
+
+    ld hl,0
+    add hl,sp
+    ld de,(STREND)
+    or a
+    sbc hl,de
+    ld a,h
+    cp 4
+    ld a,2
+    ret c
+
+    ld bc,100+660   ;Work stack space + space for one page of 0s
+    or a
+    sbc hl,bc
+    push hl
+    pop bc
+    ld de,11
+    call DIVIDE_16
+    ld (BM_MAX_FILES_TO_ENUM),bc
+
+    call BM_SCREEN_BAK
+    ld a,40
+    ld (LINL40),a
+    call INITXT
+    call ERAFNK
+
+    call DO_BOOT_MENU_MAIN
+
+    call BM_SCREEN_REST
+    xor a
+    ret
+
+DO_BOOT_MENU_MAIN:
     xor a
     ld (BM_CURSOR_LAST),a
     ld (BM_NO_STOR_DEV),a
@@ -43,9 +89,7 @@ DO_BOOT_MENU:
 
     ; Init screen mode, draw fixed elements
 
-    ld a,40
-    ld (LINL40),a
-    call INITXT
+    call CLS
 
     ld h,1
     ld l,2
@@ -86,6 +130,10 @@ _BM_MAIN_LOOP:
     halt
     call BREAKX
     ret c
+
+    ld de,0407h
+    call BM_KEY_CHECK
+    ret z
 
     call BM_F5_IS_PRESSED
     jp z,BM_START_OVER
@@ -129,7 +177,7 @@ BM_START_OVER:
     call BM_PRINT_STATUS
 
     call HWF_MOUNT_DISK
-    jp nc,DO_BOOT_MENU
+    jp nc,DO_BOOT_MENU_MAIN
 
     ld a,0FFh
     ld (BM_NO_STOR_DEV),a
@@ -549,7 +597,7 @@ BM_ENUM_FILES:
     call BM_PRINT_STATUS
 
     ld hl,BM_FILES_BASE
-    ld bc,1290
+    ld bc,(BM_MAX_FILES_TO_ENUM) ; 1290
     call HWF_ENUM_FILES
     ld (BM_NUM_FILES),bc
     push bc
@@ -1209,6 +1257,50 @@ _BM_STRLEN_LOOP:
     jr _BM_STRLEN_LOOP
 
 
+;--- Backup current screen mode
+
+BM_SCREEN_BAK:
+    ld a,(SCRMOD)
+    ld (BM_SCRMOD_BAK),a
+    ld a,(LINLEN)
+    ld (BM_LINLEN_BAK),a
+    ld a,(CNSDFG)
+    ld (BM_FNK_BAK),a
+    ret
+
+
+;--- Restore previous screen mode
+
+BM_SCREEN_REST:
+    ld a,(BM_SCRMOD_BAK)
+    dec a
+    jr z,_BM_SCREEN_REST_W32
+
+    ; Restore SCREEN 0
+
+_BM_SCREEN_REST_W40:
+    ld a,(BM_LINLEN_BAK)
+    ld (LINL40),a
+    call INITXT
+    jr _BM_SCREEN_REST_OK
+
+    ; Restore SCREEN 1
+
+_BM_SCREEN_REST_W32:
+    ld a,(BM_LINLEN_BAK)
+    ld (LINL32),a
+    call INIT32
+
+    ; Restore function keys
+
+_BM_SCREEN_REST_OK:
+    ld a,(BM_FNK_BAK)
+    or a
+    call nz,DSPFNK
+
+    ret
+
+
 ; -----------------------------------------------------------------------------
 ; Text strings
 ; -----------------------------------------------------------------------------
@@ -1284,7 +1376,7 @@ BM_HELP_1:
     db 13,10
     db " F5: Reset device and start over",13,10
     db 13,10
-    db " CTRL+STOP: Exit without any mounting"
+    db " CTRL+STOP/ESC: Exit without mounting"
     db 0
 
 BM_HELP_2:
@@ -1317,3 +1409,7 @@ BM_NO_STOR_DEV: equ BM_CURSOR_LAST+1 ;FFh if F5 was pressed and no storage devic
 BM_CUR_DIR_LEVEL: equ BM_NO_STOR_DEV+1  ;Current direcrory level, 0 is root
 BM_CUR_DIR: equ BM_CUR_DIR_LEVEL+1  ;Current directory, up to BM_MAX_DIR_NAME_LENGTH-1 chars + 0
 BM_CUR_DIR_LENGTH: equ BM_CUR_DIR+BM_MAX_DIR_NAME_LENGTH+1
+BM_MAX_FILES_TO_ENUM: equ BM_CUR_DIR_LENGTH+1
+BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2
+BM_LINLEN_BAK: equ BM_SCRMOD_BAK+1
+BM_FNK_BAK: equ BM_LINLEN_BAK+1

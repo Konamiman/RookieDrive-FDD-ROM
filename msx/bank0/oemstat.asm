@@ -69,8 +69,11 @@ OEM_COMMANDS:
     dw OEMC_USBRESET
     db "USBERROR",0
     dw OEMC_USBERROR
-    db 0
     endif
+
+    db "USBMENU",0
+    dw OEMC_USBMENU
+    db 0
 
 
     ;--- CALL USBRESET
@@ -125,6 +128,8 @@ _OEMC_USBERROR_ASC:
     ld a,e
     call OEM_PRINTHEX
     ld hl,OEM_S_H_CRLF
+
+OEM_PRINT_AND_END:
     call OEM_PRINT
 
 OEM_END:
@@ -142,6 +147,27 @@ OEM_S_ASCQ:
     db  "ASCQ: ",0
 OEM_S_NOERRDATA:
     db  "No error data recorded",0
+    
+
+    ;--- CALL USBMENU
+    ;    Open the USB menu if there's a storage device inserted
+
+OEMC_USBMENU:
+    ld ix,DO_BOOT_MENU
+    ld iy,ROM_BANK_1
+    call CALL_BANK
+    dec a
+    ld hl,OEM_S_NO_STDEV
+    jp z,OEM_PRINT_AND_END
+    dec a
+    ld hl,OEM_S_NO_MEM
+    jp z,OEM_PRINT_AND_END
+    jp OEM_END
+
+OEM_S_NO_STDEV:
+    db "No USB storage device present",0
+OEM_S_NO_MEM:
+    db "Not enough memory",0
 
 
 ; -----------------------------------------------------------------------------

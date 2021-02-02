@@ -4,16 +4,26 @@ VDP_DW: equ 0007h
 WRTVRM: equ 004Dh
 SETWRT: equ 0053h
 INITXT: equ 006Ch
+INIT32: equ 006Fh
 CHGET:  equ 009Fh
 CHPUT:  equ 00A2h
 BREAKX: equ 00B7h
+CLS:    equ 00C3h
 POSIT:  equ 00C6h
+ERAFNK: equ 00CCh
+DSPFNK: equ 00CFh
 KILBUF: equ 0156h
 
 LINL40: equ 0F3AEh
+LINL32: equ 0F3AFh
+LINLEN: equ 0F3B0h
+CRTCNT: equ 0F3B1h
 TXTCGP: equ 0F3B7h ;Address of pattern generator table in VRAM
+CNSDFG: equ 0F3DEh
+STREND: equ 0F6C6h ;End of memory used by BASIC
 OLDKEY: equ 0FBDAh
 NEWKEY: equ 0FBE5h
+SCRMOD: equ 0FCAFh
 
 ;Keyboard matrix:
 ;       bit 7  bit 6   bit 5   bit 4   bit 3   bit 2   bit 1   bit 0
