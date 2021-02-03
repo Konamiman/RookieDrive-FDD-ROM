@@ -5,7 +5,6 @@
 ; a navigable list of disk image files (available only when a
 ; standard USB mass storage device is plugged in).
 
-BM_FILES_BASE: equ 8010h
 BM_MAX_DIR_NAME_LENGTH: equ 64
 
 ; -----------------------------------------------------------------------------
@@ -26,7 +25,7 @@ DO_BOOT_MENU:
     ld a,1
     ret z
 
-    ;Return with error if we have less than 1K of free space
+    ;Return with error if we have less than 1.5K of free space
 
     ld hl,0
     add hl,sp
@@ -34,18 +33,24 @@ DO_BOOT_MENU:
     or a
     sbc hl,de
     ld a,h
-    cp 4
+    cp 6
     ld a,2
     ret c
 
-    ld bc,100+660   ;Work stack space + space for one page of 0s
+    ld bc,100+660+BM_VARS_LEN   ;Work stack space + space for one page of 0s + space for variables
     or a
     sbc hl,bc
     push hl
     pop bc
     ld de,11
     call DIVIDE_16
-    ld (BM_MAX_FILES_TO_ENUM),bc
+
+    ld iy,-BM_VARS_LEN
+    add iy,sp
+    ld sp,iy
+
+    ld (iy+BM_MAX_FILES_TO_ENUM),c
+    ld (iy+BM_MAX_FILES_TO_ENUM+1),b
 
     call BM_SCREEN_BAK
     ld a,40
@@ -56,22 +61,29 @@ DO_BOOT_MENU:
     call DO_BOOT_MENU_MAIN
 
     call BM_SCREEN_REST
+    call KILBUF
+
+    ld iy,BM_VARS_LEN
+    add iy,sp
+    ld sp,iy
+
     xor a
     ret
 
 DO_BOOT_MENU_MAIN:
     xor a
-    ld (BM_CURSOR_LAST),a
-    ld (BM_NO_STOR_DEV),a
+    ld (iy+BM_CURSOR_LAST),a
+    ld (iy+BM_NO_STOR_DEV),a
 
+    call BM_GET_CUR_DIR_ADD
+    ex de,hl
     ld hl,BM_DSK_S
-    ld de,BM_CUR_DIR
     ld bc,5
     ldir
     ld a,1
-    ld (BM_CUR_DIR_LEVEL),a
+    ld (iy+BM_CUR_DIR_LEVEL),a
     ld a,4
-    ld (BM_CUR_DIR_LENGTH),a
+    ld (iy+BM_CUR_DIR_LENGTH),a
 
     ; Try opening DSK directory on the device
 
@@ -119,7 +131,8 @@ BM_ENTER_MAIN_LOOP:
     call BM_UPDATE_CUR_PAGE_PNT
     call BM_UPDATE_CUR_FILE_PNT
     call BM_POSIT_CUR_FILE
-    ld hl,(BM_NUM_FILES)
+    ld l,(iy+BM_NUM_FILES)
+    ld h,(iy+BM_NUM_FILES+1)
     ld a,h
     or l
     call nz,BM_PRINT_CURRENT_FILE_AS_SELECTED
@@ -138,7 +151,7 @@ _BM_MAIN_LOOP:
     call BM_F5_IS_PRESSED
     jp z,BM_START_OVER
 
-    ld a,(BM_NO_STOR_DEV)
+    ld a,(iy+BM_NO_STOR_DEV)
     inc a
     jr z,_BM_MAIN_LOOP
 
@@ -163,15 +176,15 @@ _BM_MAIN_LOOP:
 
 BM_START_OVER:
     xor a
-    ld (BM_NUM_FILES),a
-    ld (BM_NUM_FILES+1),a
+    ld (iy+BM_NUM_FILES),a
+    ld (iy+BM_NUM_FILES+1),a
     inc a
-    ld (BM_CUR_PAGE),a
-    ld (BM_NUM_PAGES),a
+    ld (iy+BM_CUR_PAGE),a
+    ld (iy+BM_NUM_PAGES),a
 
     call BM_CLEAR_INFO_AREA
     xor a
-    ld (BM_CUR_DIR+1),a
+    ld (iy+BM_CUR_DIR+1),a
     call BM_PRINT_CUR_DIR
     ld hl,BM_RESETTING_DEVICE_S
     call BM_PRINT_STATUS
@@ -180,7 +193,7 @@ BM_START_OVER:
     jp nc,DO_BOOT_MENU_MAIN
 
     ld a,0FFh
-    ld (BM_NO_STOR_DEV),a
+    ld (iy+BM_NO_STOR_DEV),a
     ld hl,BM_NO_DEV_OR_NO_STOR_S
     call BM_PRINT_STATUS
     
@@ -198,10 +211,14 @@ BM_START_OVER:
 ;--- ENTER key press handler
 
 BM_DO_ENTER:
-    ld hl,(BM_CUR_FILE_PNT)
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
 
     push hl
-    ld de,BM_BUF
+    call BM_GET_BUF_ADD
+    ex de,hl
+    pop hl
+    push hl
     call BM_GENERATE_FILENAME
     pop ix
     bit 7,(ix+10)
@@ -210,7 +227,7 @@ BM_DO_ENTER:
     ;* It's a file
 
 BM_DO_ENTER_FILE:
-    ld hl,BM_BUF
+    call BM_GET_BUF_ADD
     call HWF_OPEN_FILE_DIR
     or a
     jr z,_BM_DO_ENTER_FILE_IS_OPEN
@@ -256,31 +273,32 @@ _BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK:
     ;* It's a directory
 
 BM_DO_ENTER_DIR:
-    ld hl,BM_BUF
+    call BM_GET_BUF_ADD
     ld c,"/"
     call BM_STRLEN_C
     ld (hl),0
     inc b   ;Count also the additional "/"
-    ld a,(BM_CUR_DIR_LENGTH)
+    ld a,(iy+BM_CUR_DIR_LENGTH)
     add b
     cp BM_MAX_DIR_NAME_LENGTH+1
     jp nc,_BM_MAIN_LOOP     ;Max dir length surpassed: can't change dir
 
-    ld hl,BM_BUF
+    call BM_GET_BUF_ADD
     call HWF_OPEN_FILE_DIR
     cp 1
     jp nz,_BM_DO_ENTER_OPEN_ERR
 
-    ld hl,BM_CUR_DIR_LEVEL
-    inc (hl)
+    ld a,(iy+BM_CUR_DIR_LEVEL)
+    inc a
+    ld (iy+BM_CUR_DIR_LEVEL),a
 
-    ld a,(BM_CUR_DIR_LENGTH)
+    ld a,(iy+BM_CUR_DIR_LENGTH)
     ld e,a
     ld d,0
-    ld hl,BM_CUR_DIR
+    call BM_GET_CUR_DIR_ADD
     add hl,de
 
-    ld a,(BM_CUR_DIR_LEVEL)
+    ld a,(iy+BM_CUR_DIR_LEVEL)
     cp 1
     jr z,_BM_DO_ENTER_DIR_WAS_ROOT
     ld (hl),"/"
@@ -288,7 +306,7 @@ BM_DO_ENTER_DIR:
 _BM_DO_ENTER_DIR_WAS_ROOT:
 
     ex de,hl
-    ld hl,BM_BUF
+    call BM_GET_BUF_ADD
 _BM_COPY_DIR_NAME_LOOP:
     ld a,(hl)
     ld (de),a
@@ -297,10 +315,10 @@ _BM_COPY_DIR_NAME_LOOP:
     or a
     jr nz,_BM_COPY_DIR_NAME_LOOP
 
-    ld hl,BM_CUR_DIR
+    call BM_GET_CUR_DIR_ADD
     call BM_STRLEN
     ld a,b
-    ld (BM_CUR_DIR_LENGTH),a
+    ld (iy+BM_CUR_DIR_LENGTH),a
 
     call BM_PRINT_CUR_DIR
     call BM_ENUM_FILES
@@ -323,7 +341,7 @@ BM_PRINT_STATUS_WAIT_KEY:
 ;    stopping right before the last one :facepalm:
 
 BM_DO_BS:
-    ld a,(BM_CUR_DIR_LEVEL)
+    ld a,(iy+BM_CUR_DIR_LEVEL)
     or a
     jp z,_BM_MAIN_LOOP  ;We are in the root dir already
 
@@ -338,25 +356,25 @@ BM_DO_BS:
 
 _BM_DO_BS_OPEN_ERROR:
     xor a
-    ld (BM_CUR_DIR+1),a
+    ld (iy+BM_CUR_DIR+1),a
     call BM_PRINT_CUR_DIR
     ld hl,BM_ERROR_OPENING_FILE_S
     call BM_PRINT_STATUS_WAIT_KEY
     xor a
-    ld (BM_NUM_FILES),a
-    ld (BM_NUM_FILES+1),a
+    ld (iy+BM_NUM_FILES),a
+    ld (iy+BM_NUM_FILES+1),a
     inc a
-    ld (BM_NUM_PAGES),a
-    ld (BM_CUR_PAGE),a
-    ld (BM_CUR_DIR_LENGTH),a
+    ld (iy+BM_NUM_PAGES),a
+    ld (iy+BM_CUR_PAGE),a
+    ld (iy+BM_CUR_DIR_LENGTH),a
     jp BM_ENTER_MAIN_LOOP
 _BM_DO_BS_OPEN_ROOT_OK:
 
-    ld a,(BM_CUR_DIR_LEVEL)
+    ld a,(iy+BM_CUR_DIR_LEVEL)
     dec a
     jp z,_BM_DO_BS_LV1_END
     ld b,a  ;How many levels to go back
-    ld hl,BM_CUR_DIR  ;Pointer to dir at current level, -1
+    call BM_GET_CUR_DIR_ADD  ;Pointer to dir at current level, -1
 
 _BM_DO_BS_LOOP:
     push bc
@@ -382,21 +400,22 @@ _BM_DO_BS_FIND_SLASH:
     djnz _BM_DO_BS_LOOP
 
 _BM_DO_BS_END:
-    ld hl,BM_CUR_DIR_LEVEL
-    dec (hl)
+    ld a,(iy+BM_CUR_DIR_LEVEL)
+    dec a
+    ld (iy+BM_CUR_DIR_LEVEL),a
 _BM_DO_BS_END_2:
-    ld hl,BM_CUR_DIR
+    call BM_GET_CUR_DIR_ADD
     call BM_STRLEN
     ld a,b
-    ld (BM_CUR_DIR_LENGTH),a
+    ld (iy+BM_CUR_DIR_LENGTH),a
     call BM_PRINT_CUR_DIR
     call BM_ENUM_FILES
     jp BM_ENTER_MAIN_LOOP
 
 _BM_DO_BS_LV1_END:
     xor a
-    ld (BM_CUR_DIR+1),a
-    ld (BM_CUR_DIR_LEVEL),a
+    ld (iy+BM_CUR_DIR+1),a
+    ld (iy+BM_CUR_DIR_LEVEL),a
     jr _BM_DO_BS_END_2
 
 
@@ -455,7 +474,7 @@ BM_UPDATE_CUR_FILE:
     jr z,_BM_FILE_DOWN
 
 _BM_FILE_LEFT:
-    ld a,(BM_CUR_COL)
+    ld a,(iy+BM_CUR_COL)
     dec a
     cp 0FFh
     jr nz,_BM_UPDATE_CUR_COL_GO
@@ -463,7 +482,7 @@ _BM_FILE_LEFT:
     jr _BM_UPDATE_CUR_COL_GO
 
 _BM_FILE_RIGHT:
-    ld a,(BM_CUR_COL)
+    ld a,(iy+BM_CUR_COL)
     inc a
     cp 3
     jr c,_BM_UPDATE_CUR_COL_GO
@@ -471,7 +490,7 @@ _BM_FILE_RIGHT:
     jr _BM_UPDATE_CUR_COL_GO
 
 _BM_FILE_UP:
-    ld a,(BM_CUR_ROW)
+    ld a,(iy+BM_CUR_ROW)
     dec a
     cp 0FFh
     jr nz,_BM_UPDATE_CUR_ROW_GO
@@ -479,7 +498,7 @@ _BM_FILE_UP:
     jr _BM_UPDATE_CUR_ROW_GO
 
 _BM_FILE_DOWN:
-    ld a,(BM_CUR_ROW)
+    ld a,(iy+BM_CUR_ROW)
     inc a
     cp 20
     jr c,_BM_UPDATE_CUR_ROW_GO
@@ -487,25 +506,35 @@ _BM_FILE_DOWN:
     jr _BM_UPDATE_CUR_ROW_GO
 
 _BM_UPDATE_CUR_COL_GO:
-    ld (BM_CUR_COL),a
-    ld hl,BM_CUR_COL
-    ld (BM_BUF),hl
+    ld (iy+BM_CUR_COL),a
+    push iy
+    pop hl
+    ld bc,BM_CUR_COL
+    add hl,bc
+    ld (iy+BM_BUF),l
+    ld (iy+BM_BUF+1),h
     jr _BM_UPDATE_CUR_ROWCOL_GO
 
 _BM_UPDATE_CUR_ROW_GO:
-    ld (BM_CUR_ROW),a
-    ld hl,BM_CUR_ROW
-    ld (BM_BUF),hl
+    ld (iy+BM_CUR_ROW),a
+    push iy
+    pop hl
+    ld bc,BM_CUR_ROW
+    add hl,bc
+    ld (iy+BM_BUF),l
+    ld (iy+BM_BUF+1),h
 
 _BM_UPDATE_CUR_ROWCOL_GO:
     call BM_UPDATE_CUR_FILE_PNT
-    ld hl,(BM_CUR_FILE_PNT)
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
     ld a,(hl)
     or a
     jr nz,_BM_UPDATE_CUR_ROWCOL_GO_2
     ;We ended up pointing past the end of the list,
     ;so reset column/row to 0
-    ld hl,(BM_BUF)
+    ld l,(iy+BM_BUF)
+    ld h,(iy+BM_BUF+1)
     ld (hl),0
     call BM_UPDATE_CUR_FILE_PNT
 
@@ -530,43 +559,43 @@ BM_UPDATE_PAGE:
     jp _BM_MAIN_LOOP
 
 _BM_NEXT_PAGE:
-    ld a,(BM_NUM_PAGES)
+    ld a,(iy+BM_NUM_PAGES)
     ld b,a
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     cp b
     jp z,_BM_MAIN_LOOP
 
     inc a
-    ld (BM_CUR_PAGE),a
+    ld (iy+BM_CUR_PAGE),a
     jp _BM_UPDATE_PAGE_END
 
 _BM_NEXT_10_PAGES:
-    ld a,(BM_NUM_PAGES)
+    ld a,(iy+BM_NUM_PAGES)
     ld b,a
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     cp b
     jp nc,_BM_MAIN_LOOP
     inc b
     add 10
     cp b
     jr c,_BM_NEXT_10_PAGES_GO
-    ld a,(BM_NUM_PAGES)
+    ld a,(iy+BM_NUM_PAGES)
 
 _BM_NEXT_10_PAGES_GO:
-    ld (BM_CUR_PAGE),a
+    ld (iy+BM_CUR_PAGE),a
     jp _BM_UPDATE_PAGE_END
 
 _BM_PREV_PAGE:
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     cp 1
     jp z,_BM_MAIN_LOOP
 
     dec a
-    ld (BM_CUR_PAGE),a
+    ld (iy+BM_CUR_PAGE),a
     jp _BM_UPDATE_PAGE_END
 
 _BM_PREV_10_PAGES:
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     cp 1
     jp z,_BM_MAIN_LOOP
     sub 10
@@ -576,13 +605,13 @@ _BM_PREV_10_PAGES_1:
     ld a,1
 
 _BM_PREV_10_PAGES_GO:
-    ld (BM_CUR_PAGE),a
+    ld (iy+BM_CUR_PAGE),a
     jp _BM_UPDATE_PAGE_END
 
 _BM_UPDATE_PAGE_END:
     xor a
-    ld (BM_CUR_ROW),a
-    ld (BM_CUR_COL),a
+    ld (iy+BM_CUR_ROW),a
+    ld (iy+BM_CUR_COL),a
     jp BM_ENTER_MAIN_LOOP
 
 
@@ -590,16 +619,18 @@ _BM_UPDATE_PAGE_END:
 
 BM_ENUM_FILES:
     ld a,1
-    ld (BM_CUR_PAGE),a
+    ld (iy+BM_CUR_PAGE),a
 
     call BM_CLEAR_INFO_AREA
     ld hl,BM_SCANNING_DIR_S
     call BM_PRINT_STATUS
 
-    ld hl,BM_FILES_BASE
-    ld bc,(BM_MAX_FILES_TO_ENUM) ; 1290
+    ld hl,(STREND)
+    ld c,(iy+BM_MAX_FILES_TO_ENUM)
+    ld b,(iy+BM_MAX_FILES_TO_ENUM+1)
     call HWF_ENUM_FILES
-    ld (BM_NUM_FILES),bc
+    ld (iy+BM_NUM_FILES),c
+    ld (iy+BM_NUM_FILES+1),b
     push bc
 
     push hl ;Fill one extra page of 0s.
@@ -637,11 +668,11 @@ _BM_CALC_NUM_PAGES_END:
     jr nz,_BM_CALC_NUM_PAGES_END_2
     inc a
 _BM_CALC_NUM_PAGES_END_2:
-    ld (BM_NUM_PAGES),a
+    ld (iy+BM_NUM_PAGES),a
 
     xor a
-    ld (BM_CUR_ROW),a
-    ld (BM_CUR_COL),a
+    ld (iy+BM_CUR_ROW),a
+    ld (iy+BM_CUR_COL),a
     ret
 
 
@@ -653,7 +684,8 @@ _BM_CALC_NUM_PAGES_END_2:
 ;--- Print the filenames for the current page
 
 BM_PRINT_FILENAMES_PAGE:
-    ld hl,(BM_NUM_FILES)
+    ld l,(iy+BM_NUM_FILES)
+    ld h,(iy+BM_NUM_FILES+1)
     ld a,h
     or l
     jp nz,_BM_PRINT_FILENAMES_PAGE_GO
@@ -665,10 +697,12 @@ BM_PRINT_FILENAMES_PAGE:
     jp PRINT
 
 _BM_PRINT_FILENAMES_PAGE_GO:
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     ld b,a
-    ld hl,BM_FILES_BASE-11*60
+    ld hl,(STREND)
     ld de,11*60
+    or a
+    sbc hl,de
 _BM_PRINT_FILENAMES_CALC:
     add hl,de
     djnz _BM_PRINT_FILENAMES_CALC
@@ -836,18 +870,20 @@ BM_PRINT_PAGE_NUM:
     ld hl,BM_PAGE_S
     call PRINT
 
-    ld a,(BM_CUR_PAGE)
+    ld a,(iy+BM_CUR_PAGE)
     call BM_PRINT_BYTE
     ld hl,BM_SPACE_AND_BAR
     call PRINT
-    ld a,(BM_NUM_PAGES)
+    ld a,(iy+BM_NUM_PAGES)
     jp BM_PRINT_BYTE
 
 BM_PRINT_BYTE:
-    ld ix,BM_BUF
+    call BM_GET_BUF_ADD
+    push hl
+    pop ix
     call BYTE2ASC
     ld (ix),0
-    ld hl,BM_BUF
+    call BM_GET_BUF_ADD
     jp PRINT
 
 
@@ -867,7 +903,7 @@ _BM_DRAW_LINE_LOOP:
 ;    row = BM_CUR_ROW+3
 
 BM_POSIT_CUR_FILE:
-    ld a,(BM_CUR_COL)
+    ld a,(iy+BM_CUR_COL)
     ld b,a
     sla a
     sla a
@@ -880,7 +916,7 @@ BM_POSIT_CUR_FILE:
     inc a
     inc a
     ld h,a
-    ld a,(BM_CUR_ROW)
+    ld a,(iy+BM_CUR_ROW)
     add 3
     ld l,a
     jp POSIT
@@ -889,7 +925,8 @@ BM_POSIT_CUR_FILE:
 ;--- Print the current filename at the current position
 
 BM_PRINT_CURRENT_FILE:
-    ld hl,(BM_CUR_FILE_PNT)
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
     call BM_PRINT_FILENAME
     ld b,' '
 _BM_PRINT_CURRENT_FILE_PAD:
@@ -907,8 +944,10 @@ _BM_PRINT_CURRENT_FILE_PAD:
     ;Generate the formatted file name in BM_BUF, padded with spaces
 
 BM_PRINT_CURRENT_FILE_AS_SELECTED:
-    ld hl,(BM_CUR_FILE_PNT)
-    ld de,BM_BUF
+    call BM_GET_BUF_ADD
+    ex de,hl
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
     call BM_GENERATE_FILENAME
 
 _BM_GEN_CURRENT_FILE_PAD:
@@ -932,7 +971,7 @@ _BM_GEN_CURRENT_FILE_OK:
     ld a,(VDP_DW)
     ld c,a      ;VDP write port
 
-    ld hl,BM_BUF ;Pointer to current char
+    call BM_GET_BUF_ADD  ;Pointer to current char
     ld b,12     ;How many chars left to invert
 _BM_INVERT_CHARS_LOOP:
     push hl
@@ -981,7 +1020,7 @@ BM_PRINT_CUR_DIR:
     ld l,1
     call POSIT
 
-    ld a,(BM_CUR_DIR_LENGTH)
+    ld a,(iy+BM_CUR_DIR_LENGTH)
     cp 41
     jr c,_BM_PRINT_CUR_DIR_DIRECT
 
@@ -993,7 +1032,7 @@ BM_PRINT_CUR_DIR:
     jr _BM_PRINT_CUR_DIR_END
 
 _BM_PRINT_CUR_DIR_DIRECT:
-    ld hl,BM_CUR_DIR
+    call BM_GET_CUR_DIR_ADD
     call PRINT
 
 _BM_PRINT_CUR_DIR_END:
@@ -1007,8 +1046,8 @@ _BM_PRINT_CUR_DIR_END:
 ;    (assuming current dir is not root)
 
 BM_GET_LAST_DIR_PNT:
-    ld hl,BM_CUR_DIR
-    ld de,(BM_CUR_DIR_LENGTH)
+    call BM_GET_CUR_DIR_ADD
+    ld e,(iy+BM_CUR_DIR_LENGTH)
     ld d,0
     add hl,de
 _BM_GET_LAST_DIR_PNT_LOOP:
@@ -1121,17 +1160,17 @@ BM_CURSOR_IS_PRESSED:
     jr nc,_BM_CURSOR_IS_PRESSED_END
 
     xor a
-    ld (BM_CURSOR_LAST),a
+    ld (iy+BM_CURSOR_LAST),a
     ret
 
 _BM_CURSOR_IS_PRESSED_END:
-    ld a,(BM_CURSOR_LAST)
+    ld a,(iy+BM_CURSOR_LAST)
     or a
     ld a,0
     ret nz  ;Still pressed since last time
 
     inc a
-    ld (BM_CURSOR_LAST),a
+    ld (iy+BM_CURSOR_LAST),a
 
     dec hl
     dec hl  ;Row 6 (for SHIFT)
@@ -1149,17 +1188,18 @@ _BM_CURSOR_IS_PRESSED_END:
 
 
 ;--- Update BM_CUR_PAGE_PNT as:
-;    BM_FILES_BASE + ((BM_CUR_PAGE-1)*60)*11
+;    Base for filenames (STREND) + ((BM_CUR_PAGE-1)*60)*11
 
 BM_UPDATE_CUR_PAGE_PNT:
-    ld hl,(BM_CUR_PAGE)
+    ld l,(iy+BM_CUR_PAGE)
     ld h,0
     dec l
     call BM_MULT_60
     call BM_MULT_11
-    ld de,BM_FILES_BASE
+    ld de,(STREND)
     add hl,de
-    ld (BM_CUR_PAGE_PNT),hl
+    ld (iy+BM_CUR_PAGE_PNT),l
+    ld (iy+BM_CUR_PAGE_PNT+1),h
     ret
 
 
@@ -1167,16 +1207,18 @@ BM_UPDATE_CUR_PAGE_PNT:
 ;    BM_CUR_PAGE_PNT + ((BM_CUR_COL*20) + BM_CUR_ROW)*11
 
 BM_UPDATE_CUR_FILE_PNT:
-    ld hl,(BM_CUR_COL)
+    ld l,(iy+BM_CUR_COL)
     ld h,0
     call BM_MULT_20
-    ld de,(BM_CUR_ROW)
+    ld e,(iy+BM_CUR_ROW)
     ld d,0
     add hl,de
     call BM_MULT_11
-    ld de,(BM_CUR_PAGE_PNT)
+    ld e,(iy+BM_CUR_PAGE_PNT)
+    ld d,(iy+BM_CUR_PAGE_PNT+1)
     add hl,de
-    ld (BM_CUR_FILE_PNT),hl
+    ld (iy+BM_CUR_FILE_PNT),l
+    ld (iy+BM_CUR_FILE_PNT+1),h
     ret
 
 
@@ -1261,25 +1303,25 @@ _BM_STRLEN_LOOP:
 
 BM_SCREEN_BAK:
     ld a,(SCRMOD)
-    ld (BM_SCRMOD_BAK),a
+    ld (iy+BM_SCRMOD_BAK),a
     ld a,(LINLEN)
-    ld (BM_LINLEN_BAK),a
+    ld (iy+BM_LINLEN_BAK),a
     ld a,(CNSDFG)
-    ld (BM_FNK_BAK),a
+    ld (iy+BM_FNK_BAK),a
     ret
 
 
 ;--- Restore previous screen mode
 
 BM_SCREEN_REST:
-    ld a,(BM_SCRMOD_BAK)
+    ld a,(iy+BM_SCRMOD_BAK)
     dec a
     jr z,_BM_SCREEN_REST_W32
 
     ; Restore SCREEN 0
 
 _BM_SCREEN_REST_W40:
-    ld a,(BM_LINLEN_BAK)
+    ld a,(iy+BM_LINLEN_BAK)
     ld (LINL40),a
     call INITXT
     jr _BM_SCREEN_REST_OK
@@ -1287,17 +1329,41 @@ _BM_SCREEN_REST_W40:
     ; Restore SCREEN 1
 
 _BM_SCREEN_REST_W32:
-    ld a,(BM_LINLEN_BAK)
+    ld a,(iy+BM_LINLEN_BAK)
     ld (LINL32),a
     call INIT32
 
     ; Restore function keys
 
 _BM_SCREEN_REST_OK:
-    ld a,(BM_FNK_BAK)
+    ld a,(iy+BM_FNK_BAK)
     or a
     call nz,DSPFNK
 
+    ret
+
+
+;--- Get the address of BM_BUF in HL
+
+BM_GET_BUF_ADD:
+    push bc
+    push iy
+    pop hl
+    ld bc,BM_BUF
+    add hl,bc
+    pop bc
+    ret
+
+
+;--- Get the address of BM_CUR_DIR in HL
+
+BM_GET_CUR_DIR_ADD:
+    push bc
+    push iy
+    pop hl
+    ld bc,BM_CUR_DIR
+    add hl,bc
+    pop bc
     ret
 
 
@@ -1396,7 +1462,9 @@ BM_HELP_2:
 
 _BM_VARS_BASE: equ 0C800h
 
-BM_NUM_PAGES: equ _BM_VARS_BASE
+BM_VARS_START: equ 0
+
+BM_NUM_PAGES: equ BM_VARS_START
 BM_CUR_PAGE:  equ BM_NUM_PAGES+1
 BM_NUM_FILES: equ BM_CUR_PAGE+1
 BM_BUF: equ BM_NUM_FILES+2
@@ -1413,3 +1481,6 @@ BM_MAX_FILES_TO_ENUM: equ BM_CUR_DIR_LENGTH+1
 BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2
 BM_LINLEN_BAK: equ BM_SCRMOD_BAK+1
 BM_FNK_BAK: equ BM_LINLEN_BAK+1
+
+BM_VARS_END: equ BM_FNK_BAK+1
+BM_VARS_LEN: equ BM_VARS_END-BM_VARS_START
