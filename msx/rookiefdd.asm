@@ -59,6 +59,7 @@ DEFDPB:
     include "bank1/usb.asm"
     include "bank1/misc.asm"
     include "bank1/boot_menu.asm"
+    include "bank1/dsk.asm"
 DEFDPB_1:
     include "defdpb.asm"
 

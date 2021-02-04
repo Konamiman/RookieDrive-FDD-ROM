@@ -76,6 +76,7 @@ CH_CMD_DISK_CONNECT: equ 30h
 CH_CMD_DISK_MOUNT: equ 31h
 CH_CMD_FILE_OPEN: equ 32h
 CH_CMD_FILE_ENUM_GO: equ 33h
+CH_CMD_FILE_CREATE: equ 34h
 CH_CMD_FILE_CLOSE: equ 36h
 CH_CMD_DIR_INFO_READ: equ 37h
 CH_CMD_BYTE_LOCATE: equ 39h
@@ -83,6 +84,7 @@ CH_CMD_BYTE_READ: equ 3Ah
 CH_CMD_BYTE_RD_GO: equ 3Bh
 CH_CMD_BYTE_WRITE: equ 3Ch
 CH_CMD_BYTE_WRITE_GO: equ 3Dh
+CH_CMD_DIR_CREATE: equ 40h
 CH_CMD_SET_ADDRESS: equ 45h
 CH_CMD_GET_DESCR: equ 46h
 CH_CMD_SET_CONFIG: equ 49h
@@ -590,8 +592,7 @@ FAKE_DEV_NAME:
 ; -----------------------------------------------------------------------------
 ; HWF_OPEN_FILE_DIR: Open a file or enter a directory from the current one
 ; -----------------------------------------------------------------------------
-; Input:  HL = Address of file or directory name, relative to current,
-;              can be ".." to go back to previous
+; Input:  HL = Address of file or directory name, relative to current
 ; Output: A  = 0: ok, file open
 ;              1: ok, directory entered
 ;              2: file or directory not found
@@ -632,6 +633,64 @@ HWF_OPEN_FILE_DIR:
 _HWF_OPEN_FILE_DIR_END:
     ld a,b
     ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_CREATE_FILE: Create a new file in current directory, overwrite if exists
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of file or directory name, relative to current
+; Output: A  = 0: ok, file open
+;              1: error (might be that a directory with the same name exists)
+
+HWF_CREATE_FILE:
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    call CH_WRITE_STRING
+
+    ld a,CH_CMD_FILE_CREATE
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+
+    cp USB_ERR_OK
+    ld a,0
+    ret z
+    inc a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_CREATE_DIR: Create a new directory in current directory, open if exists
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of file or directory name, relative to current
+; Output: A  = 0: ok, file open
+;              1: error (might be that a file with the same name exists)
+
+HWF_CREATE_DIR:
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    call CH_WRITE_STRING
+
+    ld a,CH_CMD_DIR_CREATE
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+
+    cp USB_ERR_OK
+    ld a,0
+    ret z
+    inc a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_CLOSE_FILE: Close open file or directory, update size in dir entry
+; -----------------------------------------------------------------------------
+
+HWF_CLOSE_FILE:
+    ld a,CH_CMD_FILE_CLOSE
+    out (CH_COMMAND_PORT),a
+    ld a,1
+    out (CH_DATA_PORT),a
+    jp CH_WAIT_INT_AND_GET_RESULT
 
 
 ; -----------------------------------------------------------------------------
