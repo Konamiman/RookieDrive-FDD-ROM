@@ -77,6 +77,7 @@ CH_CMD_DISK_MOUNT: equ 31h
 CH_CMD_FILE_OPEN: equ 32h
 CH_CMD_FILE_ENUM_GO: equ 33h
 CH_CMD_FILE_CREATE: equ 34h
+CH_CMD_FILE_ERASE: equ 34h
 CH_CMD_FILE_CLOSE: equ 36h
 CH_CMD_DIR_INFO_READ: equ 37h
 CH_CMD_BYTE_LOCATE: equ 39h
@@ -597,6 +598,7 @@ FAKE_DEV_NAME:
 ;              1: ok, directory entered
 ;              2: file or directory not found
 ;              3: other error (e.g. no device found)
+;         HL = Pointer to terminator of file or directory name
 
 HWF_OPEN_FILE_DIR:
     if USE_FAKE_STORAGE_DEVICE=1
@@ -615,9 +617,11 @@ HWF_OPEN_FILE_DIR:
     out (CH_COMMAND_PORT),a
     call CH_WRITE_STRING
 
+    push hl
     ld a,CH_CMD_FILE_OPEN
     out (CH_COMMAND_PORT),a
     call CH_WAIT_INT_AND_GET_RESULT
+    pop hl
 
     ld b,0
     cp USB_ERR_OK
@@ -643,6 +647,23 @@ _HWF_OPEN_FILE_DIR_END:
 ;              1: error (might be that a directory with the same name exists)
 
 HWF_CREATE_FILE:
+    if 0
+
+    push hl
+    call HWF_CLOSE_FILE
+    pop hl
+
+    push hl
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    call CH_WRITE_STRING
+    ld a,CH_CMD_FILE_ERASE
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+    pop hl
+    
+    endif
+
     ld a,CH_CMD_SET_FILE_NAME
     out (CH_COMMAND_PORT),a
     call CH_WRITE_STRING
@@ -1504,12 +1525,32 @@ CH_WRITE_DATA:
     ret
 
 
+; --------------------------------------
+; CH_WRITE_STRING
+;
+; Write a zero or "/" terminated string
+; to the CH data buffer (if the terminator
+; is "/" a zero is written)
+;
+; Input:  HL = Source address of the string
+; Output: HL = Points to the terminator
+
 CH_WRITE_STRING:
     ld c,CH_DATA_PORT
-_CH_WRITE_STRING_LOOP:
     ld a,(hl)
-    inc hl
-    out (c),a
+    out (c),a   ;We accept "/" only as the first char
+
+_CH_WRITE_STRING_LOOP:
     or a
-    jr nz,_CH_WRITE_STRING_LOOP
+    ret z
+    inc hl
+    ld a,(hl)
+    cp "/"
+    jr z,_CH_WRITE_STRING_BAR
+    out (c),a
+    jr _CH_WRITE_STRING_LOOP
+
+_CH_WRITE_STRING_BAR:
+    xor a
+    out (c),a
     ret
