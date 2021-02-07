@@ -591,8 +591,17 @@ DSKCHG_IMPL:
 
 _DSKCHG_IMPL_STDEV:
     pop af
-    xor a
-    ld b,1
+    call WK_GET_STORAGE_DEV_FLAGS
+    ld b,a
+    and 0BFh
+    call WK_SET_STORAGE_DEV_FLAGS
+
+    ld a,b
+    and 4
+    ld a,0
+    ld b,1  ;Unchanged
+    ret z
+    ld b,0FFh   ;Changed
     ret
 
 

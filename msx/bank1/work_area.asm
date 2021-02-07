@@ -38,6 +38,7 @@
 ;             the OUT endpoint number)
 ;     bit 0: set to 1 if there's a file mounted
 ;     bit 1: set if mounted in read only mode
+;     bit 2: set if file has changed
 ; +1: Current directory depth:
 ;     0: no directory currently open
 ;     1: root directory, etc

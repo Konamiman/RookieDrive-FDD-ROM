@@ -77,7 +77,7 @@ CH_CMD_DISK_MOUNT: equ 31h
 CH_CMD_FILE_OPEN: equ 32h
 CH_CMD_FILE_ENUM_GO: equ 33h
 CH_CMD_FILE_CREATE: equ 34h
-CH_CMD_FILE_ERASE: equ 34h
+CH_CMD_FILE_ERASE: equ 35h
 CH_CMD_FILE_CLOSE: equ 36h
 CH_CMD_DIR_INFO_READ: equ 37h
 CH_CMD_BYTE_LOCATE: equ 39h
@@ -712,6 +712,32 @@ HWF_CLOSE_FILE:
     ld a,1
     out (CH_DATA_PORT),a
     jp CH_WAIT_INT_AND_GET_RESULT
+
+
+; -----------------------------------------------------------------------------
+; HWF_DELETE_FILE: Delete file or directory
+; -----------------------------------------------------------------------------
+; Input:  HL = File or directory name
+; Output: A  = 0: Ok
+;              1: Error
+
+HWF_DELETE_FILE:
+    ;Very important: close any open file first, or it will be deleted!
+    push hl
+    call HWF_CLOSE_FILE
+    pop hl
+
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    call CH_WRITE_STRING
+
+    ld a,CH_CMD_FILE_ERASE
+    out (CH_COMMAND_PORT),a
+    call CH_WAIT_INT_AND_GET_RESULT
+    or a
+    ret z
+    ld a,1
+    ret
 
 
 ; -----------------------------------------------------------------------------
