@@ -10,7 +10,7 @@
 ; DSK_OPEN_MAIN_DIR: Open the main directory
 ; -----------------------------------------------------------------------------
 ; Output: A = 0: Ok
-;             1: Error
+;             1: Other error
 
 DSK_OPEN_MAIN_DIR:
     push hl
@@ -24,26 +24,22 @@ DSK_OPEN_MAIN_DIR:
 _DSK_OPEN_MAIN_DIR:
     ld hl,DSK_ROOT_DIR_S
     call HWF_OPEN_FILE_DIR
-    cp 1
-    ld a,1
     ret nz
 
     ld hl,DSK_MAIN_DIR_S
     call HWF_OPEN_FILE_DIR
-    ld b,a
-    cp 3
-    ld a,1
     ret z
-    ld a,b
-    dec a
+    jr c,_DSK_OPEN_MAIN_WAS_FILE
+    cp 1
     ret z
 
     ld hl,DSK_ROOT_DIR_S
-    call HWF_OPEN_FILE_DIR
-    dec a
-    ret z
-    ld a,1
-    ret
+    jp HWF_OPEN_FILE_DIR
+
+_DSK_OPEN_MAIN_WAS_FILE:
+    call HWF_CLOSE_FILE
+    ld hl,DSK_ROOT_DIR_S
+    jp HWF_OPEN_FILE_DIR
 
 DSK_ROOT_DIR_S:
     db "/",0
@@ -59,8 +55,8 @@ DSK_MAIN_DIR_S:
 ;         DE = Destination address
 ;         B  = Max amount of bytes to read
 ; Output: A  = 0: Ok
-;              1: File not found
-;              2: Other error
+;              1: Other error
+;              2: File not found
 ;         B  = Amount of bytes read if no error
 ;         DE = Pointer after last byte read
 
@@ -73,28 +69,18 @@ DSK_READ_CONFIG_FILE:
     pop bc
     pop de
     pop hl
-    ld c,a
-    cp 2
-    ld a,1
-    ret z
-    ld a,c
-    dec a
-    ld a,2
     ret nz
+    ld a,1
+    ret nc
 
     push de
     push bc
     call HWF_OPEN_FILE_DIR
     pop bc
     pop de
-    ld c,a
-    cp 2
-    ld a,1
-    ret z
-    ld a,c
-    or a
-    ld a,2
     ret nz
+    ld a,1
+    ret c
 
     ex de,hl
     ld c,b
@@ -213,8 +199,9 @@ DSK_WRITE_MAIN_CONFIG_FILE:
 ;              (the root dir is represented as an empty string)
 ;         A  = 0 for relative to current, 1 for absolute
 ; Output: A  = 0: Ok
-;              1: Directory not found
-;              2: Other error
+;              1: Other error
+;              2: Directory not found
+;              3: It's a file, not a directory
 
 DSK_CHANGE_DIR:
     or a
@@ -224,8 +211,6 @@ DSK_CHANGE_DIR:
     ld hl,DSK_ROOT_DIR_S
     call HWF_OPEN_FILE_DIR
     pop hl
-    cp 1
-    ld a,2
     ret nz
 
     ld a,(hl)
@@ -235,13 +220,9 @@ _DSK_CHANGE_DIR_REL:
 
 _DSK_CHANGE_LOOP:
     call HWF_OPEN_FILE_DIR
-    ld b,a
-    or a
-    ld a,2
-    ret z
-    ld a,b
-    dec a
     ret nz
+    ld a,3
+    ret nc
 
     ld a,(hl)
     inc hl
@@ -272,8 +253,9 @@ _DSK_CHANGE_LOOP:
 ; Input:  HL = Directory path, "dir/dir2/dir3", no starting or ending "/"
 ;         A  = 0 for relative to current, 1 for absolute
 ; Output: A  = 0: Ok
-;              1: Directory not found
-;              2: Other error
+;              1: Other error
+;              2: Directory not found
+;              3: It's a file, not a directory
 
 DSK_CHANGE_DIR_U:
     ld iy,-65
@@ -320,7 +302,6 @@ _DSK_CHANGE_DIR_U:
     pop hl
     pop af
     call DSK_CHANGE_DIR
-    or a
     ret z
 
     ;Rewrite CURDIR with its old value,
@@ -356,8 +337,9 @@ DSK_CURDIR_S:
 ; -----------------------------------------------------------------------------
 ; Input:  HL = File path
 ; Output: A  = 0: Ok
-;              1: File not found
-;              2: Other error
+;              1: Other error
+;              2: File not found
+;              3: It's a directory, not a file
 
 DSK_MOUNT:
     ld iy,-65-15    ;65 for dir name+0, 15 for file length+name+0
@@ -399,7 +381,7 @@ _DSK_MOUNT:
     ld hl,DSK_CURFILE_S
     call DSK_READ_MAIN_CONFIG_FILE
     pop hl
-    dec hl      ;;HL = Buffer for length of file name
+    dec hl      ;HL = Buffer for length of file name
     ld (hl),b
     xor a
     ld (de),a
@@ -427,8 +409,10 @@ _DSK_MOUNT:
     ;Try to actually mount the file, return if ok
 
     call HWF_OPEN_FILE_DIR
-    or a
-    jp z,_DSK_MOUNT_SET_WORK
+    jr nz,_DSK_MOUNT_ERR
+    jp nc,_DSK_MOUNT_SET_WORK
+    ld a,3
+_DSK_MOUNT_ERR:
 
     push af ;Save the error we'll return at the end
 
@@ -446,7 +430,7 @@ _DSK_MOUNT:
     pop hl  ;Error from mounting the requested file
     or a
     ld a,h
-    jr nz,_DSK_MOUNT_ERR_END_2
+    ret nz
     push hl
 
     ;Set current directory from CURDIR again
@@ -455,7 +439,6 @@ _DSK_MOUNT:
     pop hl
     ld a,1
     call DSK_CHANGE_DIR
-    or a
     jr nz,_DSK_MOUNT_ERR_END  ;Should never occur but just in case
 
     ;Mount file from CURFILE again if there was any
@@ -468,29 +451,18 @@ _DSK_MOUNT:
     or a
     jr z,_DSK_MOUNT_ERR_END
     call HWF_OPEN_FILE_DIR
-    or a
-    call z,_DSK_MOUNT_SET_WORK
+    call z,_DSK_MOUNT_SET_WORK  ;Assume it was a file, not a dir
     
     ;Jump here on error from HWF_OPEN_FILE_DIR
 
 _DSK_MOUNT_ERR_END:
     pop af
-_DSK_MOUNT_ERR_END_2:
-    ld b,a
-    dec a
-    or a
-    ld a,2
-    ret z   ;Error was 1
-    ld a,b
-    dec a
     ret
 
     ;Set disk mounted flag in work area
 
 _DSK_MOUNT_SET_WORK:
     push af
-    ld a,"!"
-    call CHPUT
     call WK_GET_STORAGE_DEV_FLAGS
     or 1+4  ;Disk present+disk has changed
     call WK_SET_STORAGE_DEV_FLAGS
@@ -499,26 +471,3 @@ _DSK_MOUNT_SET_WORK:
 
 DSK_CURFILE_S:
     db "CURFILE",0
-
-
-; -----------------------------------------------------------------------------
-; DSK_CHANGE_DIR_U: Change the current directory and update config files
-;
-; This one is tricky. We can't update CURDIR until after we are sure that
-; the directory change has been sucessful, but if we update a config file
-; after setting our directory then it won't be set anymore! Also if we fail
-; we should restore the previous directory.
-;
-; Thus we do it like this:
-;
-; 1. Read current content of CURDIR, save in memory
-; 2. Set CURDIR contents to the directory we want to change to
-; 3. Try to change to the directory, if successful, we're all set
-; 4. On error changing the directory, set CURDIR to its previous contents
-;    and change to it again
-; -----------------------------------------------------------------------------
-; Input:  HL = Directory path, "dir/dir2/dir3", no starting or ending "/"
-;         A  = 0 for relative to current, 1 for absolute
-; Output: A  = 0: Ok
-;              1: Directory not found
-;              2: Other error

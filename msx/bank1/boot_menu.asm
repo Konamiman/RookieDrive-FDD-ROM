@@ -90,13 +90,12 @@ DO_BOOT_MENU_MAIN:
     if USE_FAKE_STORAGE_DEVICE = 0
     ld hl,BM_ROOT_DIR_S
     call HWF_OPEN_FILE_DIR
-    dec a
     ret nz
 
     ld hl,BM_DSK_S
     call HWF_OPEN_FILE_DIR
-    dec a
     ret nz
+    ret nc
     endif
 
     ; Init screen mode, draw fixed elements
@@ -229,16 +228,17 @@ BM_DO_ENTER:
 BM_DO_ENTER_FILE:
     call BM_GET_BUF_ADD
     call HWF_OPEN_FILE_DIR
-    or a
-    jr z,_BM_DO_ENTER_FILE_IS_OPEN
+    jr nz,_BM_DO_ENTER_OPEN_ERR
+    jr nc,_BM_DO_ENTER_FILE_IS_OPEN
 
 _BM_DO_ENTER_OPEN_ERR: 
-    dec a   ;It's a dir: treat as other error (should never happen)
+    or a   ;It's a dir: treat as other error (should never happen)
+    ld hl,BM_ERROR_OPENING_FILE_S
+    jr z,_BM_DO_ENTER_PRINT_ERR
     dec a
-    ld hl,BM_FILE_NOT_FOUND_S
     jr z,_BM_DO_ENTER_PRINT_ERR
     
-    ld hl,BM_ERROR_OPENING_FILE_S
+    ld hl,BM_FILE_NOT_FOUND_S
 _BM_DO_ENTER_PRINT_ERR:
     call BM_PRINT_STATUS_WAIT_KEY
     call BM_PRINT_MAIN_STATUS
@@ -285,8 +285,8 @@ BM_DO_ENTER_DIR:
 
     call BM_GET_BUF_ADD
     call HWF_OPEN_FILE_DIR
-    cp 1
     jp nz,_BM_DO_ENTER_OPEN_ERR
+    jp nc,_BM_DO_ENTER_OPEN_ERR
 
     ld a,(iy+BM_CUR_DIR_LEVEL)
     inc a
@@ -351,7 +351,6 @@ BM_DO_BS:
 
     ld hl,BM_ROOT_DIR_S
     call HWF_OPEN_FILE_DIR
-    cp 1
     jr z,_BM_DO_BS_OPEN_ROOT_OK
 
 _BM_DO_BS_OPEN_ERROR:
@@ -394,8 +393,8 @@ _BM_DO_BS_FIND_SLASH:
     call HWF_OPEN_FILE_DIR
     pop hl
     pop bc
-    cp 1
     jr nz,_BM_DO_BS_OPEN_ROOT_OK
+    jr nc,_BM_DO_BS_OPEN_ROOT_OK
 
     djnz _BM_DO_BS_LOOP
 

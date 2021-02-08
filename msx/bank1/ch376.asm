@@ -594,10 +594,13 @@ FAKE_DEV_NAME:
 ; HWF_OPEN_FILE_DIR: Open a file or enter a directory from the current one
 ; -----------------------------------------------------------------------------
 ; Input:  HL = Address of file or directory name, relative to current
-; Output: A  = 0: ok, file open
-;              1: ok, directory entered
+; Output: A  = 0: ok, file or directory open
+;              1: generic error (e.g. no device found)
 ;              2: file or directory not found
-;              3: other error (e.g. no device found)
+;              
+;         Cy = 0: file open (if no error)
+;              1: directory open (if no error)
+;         Z if ok, NZ if error
 ;         HL = Pointer to terminator of file or directory name
 
 HWF_OPEN_FILE_DIR:
@@ -623,19 +626,25 @@ HWF_OPEN_FILE_DIR:
     call CH_WAIT_INT_AND_GET_RESULT
     pop hl
 
-    ld b,0
+    ld b,a
     cp USB_ERR_OK
-    jr z,_HWF_OPEN_FILE_DIR_END
-    inc b
+    ld a,0
+    ret z   ;NC, Z
+
+    ld a,b
     cp USB_ERR_OPEN_DIR
-    jr z,_HWF_OPEN_FILE_DIR_END
-    inc b
+    ld a,0
+    scf
+    ret z   ;C, Z
+
+    ld a,b
     cp USB_ERR_MISS_FILE
+    ld a,2
     jr z,_HWF_OPEN_FILE_DIR_END
-    inc b
+    dec a
 
 _HWF_OPEN_FILE_DIR_END:
-    ld a,b
+    or a    ;Force NZ
     ret
 
 
