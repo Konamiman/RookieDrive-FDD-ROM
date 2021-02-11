@@ -10,7 +10,9 @@
 ; DSK_OPEN_MAIN_DIR: Open the main directory
 ; -----------------------------------------------------------------------------
 ; Output: A = 0: Ok
-;             1: Other error
+;             1: Error
+;         Z if ok, NZ if error
+;         Cy = 0 if root directory was open, 1 if DSK_MAIN_DIR_S was open
 
 DSK_OPEN_MAIN_DIR:
     push hl
@@ -28,18 +30,20 @@ _DSK_OPEN_MAIN_DIR:
 
     ld hl,DSK_MAIN_DIR_S
     call HWF_OPEN_FILE_DIR
-    ret z
-    jr c,_DSK_OPEN_MAIN_WAS_FILE
-    cp 1
-    ret z
+    jr nz,_DSK_OPEN_MAIN_REOPEN_ROOT
+    jr c,_DSK_OPEN_MAIN_WAS_MSX
 
+_DSK_OPEN_MAIN_REOPEN_ROOT:
     ld hl,DSK_ROOT_DIR_S
-    jp HWF_OPEN_FILE_DIR
+    call HWF_OPEN_FILE_DIR
+_DSK_OPEN_MAIN_END:
+    or a    ;If error, set NZ; if ok, set Z and NC
+    ret
 
-_DSK_OPEN_MAIN_WAS_FILE:
-    call HWF_CLOSE_FILE
-    ld hl,DSK_ROOT_DIR_S
-    jp HWF_OPEN_FILE_DIR
+_DSK_OPEN_MAIN_WAS_MSX:
+    xor a
+    scf
+    ret
 
 DSK_ROOT_DIR_S:
     db "/",0
@@ -256,6 +260,7 @@ _DSK_CHANGE_LOOP:
 ;              1: Other error
 ;              2: Directory not found
 ;              3: It's a file, not a directory
+;              4: Path is too long
 
 DSK_CHANGE_DIR_U:
     ld iy,-65
@@ -270,6 +275,22 @@ DSK_CHANGE_DIR_U:
 _DSK_CHANGE_DIR_U:
     push af
     push hl
+
+    ;If setting absolute dir we can check its length now
+
+    or a
+    jr z,_DSK_CHANGE_DIR_U_LENGTH_OK
+    push hl
+    call BM_STRLEN
+    pop hl
+    ld a,b
+    cp BM_MAX_DIR_NAME_LENGTH+1
+    jr c,_DSK_CHANGE_DIR_U_LENGTH_OK
+    pop hl
+    pop af
+    ld a,4
+    ret
+_DSK_CHANGE_DIR_U_LENGTH_OK:
 
     ;Set work area as "no file mounted"
 
@@ -287,20 +308,59 @@ _DSK_CHANGE_DIR_U:
     call DSK_READ_MAIN_CONFIG_FILE
     ld (iy),b
 
-    ;Save new dir into CURDIR
+    ;If setting relative dir check length now
+
+    pop hl
+    pop af
+    or a
+    jr nz,_DSK_CHANGE_DIR_U_UPD_CURDIR
+    push hl
+    call BM_STRLEN
+    ld a,b
+    add (iy)
+    inc a   ;Account for the extra "/" to add
+    cp BM_MAX_DIR_NAME_LENGTH+1
+    jr c,_DSK_CHANGE_DIR_U_LENGTH_OK_2
+    pop hl
+    ld a,4
+    ret
+_DSK_CHANGE_DIR_U_LENGTH_OK_2:
+
+    ;Also if setting relative dir:
+    ;append dir to the one we have in memory
+
+    push iy
+    pop hl
+    inc hl  ;Skip length
+    ld e,(iy)
+    ld d,0
+    add hl,de
+    ld (hl),'/'
+    inc hl
+    ex de,hl
 
     pop hl
     push hl
     call BM_STRLEN
-    pop de
-    push de
-    ld hl,DSK_CURDIR_S
-    call DSK_WRITE_MAIN_CONFIG_FILE
+    pop hl
+    ld c,b
+    ld b,0
+    inc bc  ;Count the terminator too
+    ldir
+
+    push iy
+    pop hl
+    inc hl
+
+    ;Save new dir into CURDIR,
+    ;input: HL = new absolute dir
+
+_DSK_CHANGE_DIR_U_UPD_CURDIR:
+    call DSK_SET_CURDIR
 
     ;Try the actual dir change, return if ok
 
-    pop hl
-    pop af
+    ld a,1
     call DSK_CHANGE_DIR
     ret z
 
@@ -324,6 +384,18 @@ _DSK_CHANGE_DIR_U:
 
 DSK_CURDIR_S:
     db "CURDIR",0
+
+    ;--- Set the value of CURDIR from HL, preserves HL
+
+DSK_SET_CURDIR:
+    push hl
+    call BM_STRLEN
+    pop de
+    push de
+    ld hl,DSK_CURDIR_S
+    call DSK_WRITE_MAIN_CONFIG_FILE
+    pop hl
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -471,3 +543,62 @@ _DSK_MOUNT_SET_WORK:
 
 DSK_CURFILE_S:
     db "CURFILE",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_GET_CURDIR: Get (and enter) the current directory
+;
+; - If config file CURDIR exists and the directory it contains exists: return it
+; - Otherwise, return the main directory
+;
+; Doesn't modify the contents of CURFILE.
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of 65 byte buffer for directory name
+; Output: A  = 0: Ok
+;              1: Error
+;         B  = Length of name (not including terminator), 0 on error
+;         DE = Pointer to terminator
+
+DSK_GET_CURDIR:
+    ex de,hl
+    ld hl,DSK_CURDIR_S
+    push de
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    jr nz,_DSK_GET_CURDIR_NO_CONFIG
+
+    pop hl
+    push hl
+    call HWF_OPEN_FILE_DIR
+    jr nz,_DSK_GET_CURDIR_NO_CONFIG
+    jr nc,_DSK_GET_CURDIR_NO_CONFIG
+
+    inc sp
+    inc sp
+    ld (de),a
+    ret
+
+_DSK_GET_CURDIR_NO_CONFIG:
+    call DSK_OPEN_MAIN_DIR
+    ld a,1
+    jr nz,_DSK_OPEN_MAIN_DIR_EMPTY
+    ld a,0
+    jr nc,_DSK_OPEN_MAIN_DIR_EMPTY
+
+    pop de
+    push de
+    ld hl,DSK_MAIN_DIR_S
+    ld bc,13
+    ldir
+    pop hl
+    call BM_STRLEN
+    ex de,hl
+    xor a
+    ret
+
+_DSK_OPEN_MAIN_DIR_EMPTY:
+    pop de
+    ld b,0
+    ret
+
+
