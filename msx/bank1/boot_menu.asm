@@ -9,10 +9,14 @@ BM_MAX_DIR_NAME_LENGTH: equ 64
 
 ; -----------------------------------------------------------------------------
 ; Boot menu entry point
+; 
+; The starting point is CURDIR, or if it isn't set, the main directory.
 ;
-; Output: A=0 if the menu was actually opened
-;           1 if no storage device was found
-;           2 if not enough memory
+; Output: A = 0 if a file was actually mounted
+;             1 if ESC or CTRL+STOP was pressed
+;             2 if not enough memory to start the menu
+;             3 if no storage device is present
+;             4 if error getting initial directory
 ; -----------------------------------------------------------------------------
 
 DO_BOOT_MENU:
@@ -22,7 +26,7 @@ DO_BOOT_MENU:
     call USB_CHECK_DEV_CHANGE
 
     call WK_GET_STORAGE_DEV_FLAGS
-    ld a,1
+    ld a,3
     ret z
 
     ;Return with error if we have less than 1.5K of free space
@@ -60,43 +64,21 @@ DO_BOOT_MENU:
 
     call DO_BOOT_MENU_MAIN
 
+    push af
     call BM_SCREEN_REST
     call KILBUF
+    pop af
 
     ld iy,BM_VARS_LEN
     add iy,sp
     ld sp,iy
 
-    xor a
     ret
 
 DO_BOOT_MENU_MAIN:
     xor a
     ld (iy+BM_CURSOR_LAST),a
     ld (iy+BM_NO_STOR_DEV),a
-
-    call BM_GET_CUR_DIR_ADD
-    ex de,hl
-    ld hl,BM_DSK_S
-    ld bc,5
-    ldir
-    ld a,1
-    ld (iy+BM_CUR_DIR_LEVEL),a
-    ld a,4
-    ld (iy+BM_CUR_DIR_LENGTH),a
-
-    ; Try opening DSK directory on the device
-
-    if USE_FAKE_STORAGE_DEVICE = 0
-    ld hl,BM_ROOT_DIR_S
-    call HWF_OPEN_FILE_DIR
-    ret nz
-
-    ld hl,BM_DSK_S
-    call HWF_OPEN_FILE_DIR
-    ret nz
-    ret nc
-    endif
 
     ; Init screen mode, draw fixed elements
 
@@ -110,6 +92,43 @@ DO_BOOT_MENU_MAIN:
     ld l,23
     call POSIT
     call BM_DRAW_LINE
+
+    ; Try opening CURDIR or the main directory on the device
+
+    if USE_FAKE_STORAGE_DEVICE = 0
+
+    call BM_GET_CUR_DIR_ADD
+    push hl
+    call DSK_GET_CURDIR
+    pop hl
+    or a
+    jr z,_BM_MAIN_GETDIR_OK
+    ld hl,BM_ERROR_OPENING_FILE_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    ld a,4
+    ret
+
+_BM_MAIN_GETDIR_OK:
+    ld (iy+BM_CUR_DIR_LENGTH),b
+
+    ld b,0
+    ld a,(hl)
+    or a
+    jr z,_BM_CALC_DIR_LEVEL_END
+    inc b   ;Non-empty dir: start at level 1, each "/" increases level
+_BM_CALC_DIR_LEVEL:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,_BM_CALC_DIR_LEVEL_END
+    cp "/"
+    jr nz,_BM_CALC_DIR_LEVEL
+    inc b
+    jr _BM_CALC_DIR_LEVEL
+_BM_CALC_DIR_LEVEL_END:
+    ld (iy+BM_CUR_DIR_LEVEL),b
+
+    endif
 
     call BM_PRINT_CUR_DIR
     call BM_ENUM_FILES
@@ -141,10 +160,12 @@ BM_ENTER_MAIN_LOOP:
 _BM_MAIN_LOOP:
     halt
     call BREAKX
+    ld a,1
     ret c
 
-    ld de,0407h
+    ld de,0407h ;ESC pressed?
     call BM_KEY_CHECK
+    ld a,1
     ret z
 
     call BM_F5_IS_PRESSED
@@ -183,7 +204,7 @@ BM_START_OVER:
 
     call BM_CLEAR_INFO_AREA
     xor a
-    ld (iy+BM_CUR_DIR+1),a
+    ld (iy+BM_CUR_DIR),a
     call BM_PRINT_CUR_DIR
     ld hl,BM_RESETTING_DEVICE_S
     call BM_PRINT_STATUS
@@ -268,7 +289,8 @@ _BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK:
     call BM_PRINT_STATUS
 
     call KILBUF
-    ret ;Continue computer boot process
+    xor a
+    ret ;Exit menu
 
     ;* It's a directory
 
@@ -349,13 +371,31 @@ BM_DO_BS:
     ld hl,BM_ENTERING_DIR_S
     call BM_PRINT_STATUS
 
-    ld hl,BM_ROOT_DIR_S
-    call HWF_OPEN_FILE_DIR
-    jr z,_BM_DO_BS_OPEN_ROOT_OK
+    call BM_GET_CUR_DIR_ADD
+    push hl
+    ld a,(iy+BM_CUR_DIR_LEVEL)
+    dec a
+    jr z,_BM_DO_BS_FOUND_SLASH  ;We are in level 1: just zero the current dir
+    ld c,(iy+BM_CUR_DIR_LENGTH)
+    ld b,0
+    add hl,bc
+_BM_DO_BS_FIND_SLASH_LOOP:
+    dec hl
+    ld a,(hl)
+    cp "/"
+    jr nz,_BM_DO_BS_FIND_SLASH_LOOP
+
+_BM_DO_BS_FOUND_SLASH:
+    ld (hl),0
+    pop hl
+    ld a,1
+    call DSK_CHANGE_DIR
+    or a
+    jr z,_BM_DO_BS_END
 
 _BM_DO_BS_OPEN_ERROR:
     xor a
-    ld (iy+BM_CUR_DIR+1),a
+    ld (iy+BM_CUR_DIR),a
     call BM_PRINT_CUR_DIR
     ld hl,BM_ERROR_OPENING_FILE_S
     call BM_PRINT_STATUS_WAIT_KEY
@@ -367,36 +407,6 @@ _BM_DO_BS_OPEN_ERROR:
     ld (iy+BM_CUR_PAGE),a
     ld (iy+BM_CUR_DIR_LENGTH),a
     jp BM_ENTER_MAIN_LOOP
-_BM_DO_BS_OPEN_ROOT_OK:
-
-    ld a,(iy+BM_CUR_DIR_LEVEL)
-    dec a
-    jp z,_BM_DO_BS_LV1_END
-    ld b,a  ;How many levels to go back
-    call BM_GET_CUR_DIR_ADD  ;Pointer to dir at current level, -1
-
-_BM_DO_BS_LOOP:
-    push bc
-    push hl
-    ld (hl),"/" ;Restore the slash we had zero-ed in the last loop step
-    inc hl
-_BM_DO_BS_FIND_SLASH:
-    ld a,(hl)
-    inc hl
-    cp "/"
-    jr nz,_BM_DO_BS_FIND_SLASH
-
-    dec hl
-    ld (hl),0   ;Temporarily replace ending slash with 0 for HWF_OPEN_FILE_DIR
-    ex (sp),hl  ;Now HL=Start of dir name-1, (SP)=Terminator
-    inc hl
-    call HWF_OPEN_FILE_DIR
-    pop hl
-    pop bc
-    jr nz,_BM_DO_BS_OPEN_ROOT_OK
-    jr nc,_BM_DO_BS_OPEN_ROOT_OK
-
-    djnz _BM_DO_BS_LOOP
 
 _BM_DO_BS_END:
     ld a,(iy+BM_CUR_DIR_LEVEL)
@@ -410,12 +420,6 @@ _BM_DO_BS_END_2:
     call BM_PRINT_CUR_DIR
     call BM_ENUM_FILES
     jp BM_ENTER_MAIN_LOOP
-
-_BM_DO_BS_LV1_END:
-    xor a
-    ld (iy+BM_CUR_DIR+1),a
-    ld (iy+BM_CUR_DIR_LEVEL),a
-    jr _BM_DO_BS_END_2
 
 
 ;--- Help loop, entered when F1 is pressed
@@ -1015,12 +1019,14 @@ _BM_PRINT_INVERTED_LOOP:
 ;--- Print the current directory in the top row
 
 BM_PRINT_CUR_DIR:
-    ld h,2
+    ld h,1
     ld l,1
     call POSIT
+    ld a,"/"
+    call CHPUT
 
     ld a,(iy+BM_CUR_DIR_LENGTH)
-    cp 41
+    cp 40
     jr c,_BM_PRINT_CUR_DIR_DIRECT
 
     ld hl,BM_DOTS_BAR_S
@@ -1474,7 +1480,7 @@ BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
 BM_CURSOR_LAST: equ BM_CUR_COL+1    ;Result of last call to BM_CURSOR_IS_PRESSED
 BM_NO_STOR_DEV: equ BM_CURSOR_LAST+1 ;FFh if F5 was pressed and no storage device was found
 BM_CUR_DIR_LEVEL: equ BM_NO_STOR_DEV+1  ;Current direcrory level, 0 is root
-BM_CUR_DIR: equ BM_CUR_DIR_LEVEL+1  ;Current directory, up to BM_MAX_DIR_NAME_LENGTH-1 chars + 0
+BM_CUR_DIR: equ BM_CUR_DIR_LEVEL+1  ;Current directory, up to BM_MAX_DIR_NAME_LENGTH chars + 0
 BM_CUR_DIR_LENGTH: equ BM_CUR_DIR+BM_MAX_DIR_NAME_LENGTH+1
 BM_MAX_FILES_TO_ENUM: equ BM_CUR_DIR_LENGTH+1
 BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2

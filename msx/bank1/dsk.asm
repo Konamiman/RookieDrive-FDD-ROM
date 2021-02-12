@@ -563,19 +563,23 @@ DSK_GET_CURDIR:
     ex de,hl
     ld hl,DSK_CURDIR_S
     push de
+    ld b,64
     call DSK_READ_MAIN_CONFIG_FILE
     or a
     jr nz,_DSK_GET_CURDIR_NO_CONFIG
+    ld (de),a
 
     pop hl
     push hl
-    call HWF_OPEN_FILE_DIR
+    push bc
+    ld a,1
+    call DSK_CHANGE_DIR
+    pop bc
+    or a
     jr nz,_DSK_GET_CURDIR_NO_CONFIG
-    jr nc,_DSK_GET_CURDIR_NO_CONFIG
 
     inc sp
     inc sp
-    ld (de),a
     ret
 
 _DSK_GET_CURDIR_NO_CONFIG:
