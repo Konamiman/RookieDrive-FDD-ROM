@@ -196,6 +196,21 @@ DSK_WRITE_MAIN_CONFIG_FILE:
 
 
 ; -----------------------------------------------------------------------------
+; DSK_WRITE_CURDIR_FILE: Write CURDIR config file in main directory
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of content to write, zero-terminated
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_WRITE_CURDIR_FILE:
+    push hl
+    call BM_STRLEN
+    pop de
+    ld hl,DSK_CURDIR_S
+    jp DSK_WRITE_MAIN_CONFIG_FILE
+
+
+; -----------------------------------------------------------------------------
 ; DSK_CHANGE_DIR: Change the current directory
 ;                 (doesn't update config files or work area)
 ; -----------------------------------------------------------------------------
@@ -263,6 +278,7 @@ _DSK_CHANGE_LOOP:
 ;              4: Path is too long
 
 DSK_CHANGE_DIR_U:
+    push iy
     ld iy,-65
     add iy,sp
     ld sp,iy
@@ -270,6 +286,7 @@ DSK_CHANGE_DIR_U:
     ld iy,65
     add iy,sp
     ld sp,iy
+    pop iy
     ret
 
 _DSK_CHANGE_DIR_U:
@@ -408,22 +425,28 @@ DSK_SET_CURDIR:
 ; that the value of CURDIR is set as the current directory.
 ; -----------------------------------------------------------------------------
 ; Input:  HL = File path
+;         A  = 0: Mount as read-only if read-only flag is set
+;              1: Force mount as read and write
+;              2: Force mount as read-only
 ; Output: A  = 0: Ok
 ;              1: Other error
 ;              2: File not found
 ;              3: It's a directory, not a file
 
 DSK_MOUNT:
-    ld iy,-65-15    ;65 for dir name+0, 15 for file length+name+0
+    push iy
+    ld iy,-65-15-1    ;65 for dir name+0, 15 for file length+name+0, 1 extra for read-only mode
     add iy,sp
     ld sp,iy
     call _DSK_MOUNT
-    ld iy,65+15
+    ld iy,65+15+1
     add iy,sp
     ld sp,iy
+    pop iy
     ret
 
 _DSK_MOUNT:
+    ld (iy+65+15),a
     push hl
 
     ;Set work area as "no file mounted" for now
@@ -480,12 +503,14 @@ _DSK_MOUNT:
 
     ;Try to actually mount the file, return if ok
 
+    push hl
     call HWF_OPEN_FILE_DIR
+    pop hl
     jr nz,_DSK_MOUNT_ERR
     jp nc,_DSK_MOUNT_SET_WORK
     ld a,3
 _DSK_MOUNT_ERR:
-
+    ld (iy+65+15),0 ;Remount old file in auto-readonly mode
     push af ;Save the error we'll return at the end
 
     ;Restore old contents of CURFILE
@@ -522,7 +547,9 @@ _DSK_MOUNT_ERR:
     ld a,(hl)
     or a
     jr z,_DSK_MOUNT_ERR_END
+    push hl
     call HWF_OPEN_FILE_DIR
+    pop hl
     call z,_DSK_MOUNT_SET_WORK  ;Assume it was a file, not a dir
     
     ;Jump here on error from HWF_OPEN_FILE_DIR
@@ -532,11 +559,28 @@ _DSK_MOUNT_ERR_END:
     ret
 
     ;Set disk mounted flag in work area
+    ;HL = File name
 
 _DSK_MOUNT_SET_WORK:
     push af
+    ld a,(iy+65+15)
+    cp 2
+    jr z,_DSK_MOUNT_SET_WORK_DO
+    cp 1
+    ld a,0
+    jr z,_DSK_MOUNT_SET_WORK_DO
+    call HWF_GET_FILE_ATTR
+    dec a
+    jr z,_DSK_MOUNT_SET_WORK_DO ;Error, assume not read-only
+    ld a,b    ;Attributes byte, read-only in bit 0
+    rla ;Now read-only in bit 1
+    and 2
+
+_DSK_MOUNT_SET_WORK_DO:
+    ld b,a
     call WK_GET_STORAGE_DEV_FLAGS
     or 1+4  ;Disk present+disk has changed
+    or b  ;Read-only flag (maybe)
     call WK_SET_STORAGE_DEV_FLAGS
     pop af
     ret

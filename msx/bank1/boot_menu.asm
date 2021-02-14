@@ -247,19 +247,27 @@ BM_DO_ENTER:
     ;* It's a file
 
 BM_DO_ENTER_FILE:
-    call BM_GET_BUF_ADD
-    call HWF_OPEN_FILE_DIR
-    jr nz,_BM_DO_ENTER_OPEN_ERR
-    jr nc,_BM_DO_ENTER_FILE_IS_OPEN
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_MOUNTING_BOOTING_S
+    call BM_PRINT_STATUS
 
-_BM_DO_ENTER_OPEN_ERR: 
-    or a   ;It's a dir: treat as other error (should never happen)
+    call BM_GET_CUR_DIR_ADD
+    call DSK_WRITE_CURDIR_FILE
+    or a
     ld hl,BM_ERROR_OPENING_FILE_S
-    jr z,_BM_DO_ENTER_PRINT_ERR
-    dec a
-    jr z,_BM_DO_ENTER_PRINT_ERR
+    jr nz,_BM_DO_ENTER_OPEN_ERR
     
+    call BM_GET_BUF_ADD
+    xor a
+    call DSK_MOUNT
+    or a
+    jr z,_BM_DO_ENTER_FILE_SUCCESS   ;Exit boot menu
+
+_BM_DO_ENTER_OPEN_ERR:
+    cp 2
     ld hl,BM_FILE_NOT_FOUND_S
+    jr z,_BM_DO_ENTER_PRINT_ERR
+    ld hl,BM_ERROR_OPENING_FILE_S   ;Other error or it's a dir
 _BM_DO_ENTER_PRINT_ERR:
     call BM_PRINT_STATUS_WAIT_KEY
     call BM_PRINT_MAIN_STATUS
@@ -267,27 +275,9 @@ _BM_DO_ENTER_PRINT_ERR:
 _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
     call BM_ENTER_IS_PRESSED
     jr z,_BM_DO_ENTER_WAIT_RELEASE
-    jp _BM_MAIN_LOOP
+    jp BM_ENTER_MAIN_LOOP ; _BM_MAIN_LOOP
 
-_BM_DO_ENTER_FILE_IS_OPEN:
-    call HWF_GET_FILE_ATTR
-    dec a
-    jr z,_BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK ;Error, assume not read-only
-    ld a,b    ;Attributes byte, read-only in bit 0
-    rla ;Now read-only in bit 1
-    and 2
-
-_BM_DO_ENTER_FILE_IS_OPEN_ATTR_OK:
-    ld b,a
-    call WK_GET_STORAGE_DEV_FLAGS
-    or 1    ;There's a file open
-    or b    ;Maybe read-only flag
-    call WK_SET_STORAGE_DEV_FLAGS
-
-    call BM_CLEAR_INFO_AREA
-    ld hl,BM_MOUNTING_BOOTING_S
-    call BM_PRINT_STATUS
-
+_BM_DO_ENTER_FILE_SUCCESS:
     call KILBUF
     xor a
     ret ;Exit menu
