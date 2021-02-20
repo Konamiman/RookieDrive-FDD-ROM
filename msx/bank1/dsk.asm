@@ -110,8 +110,8 @@ DSK_CONFIG_DIR_S:
 ;         DE = Destination address
 ;         B  = Max amount of bytes to read
 ; Output: A  = 0: Ok
-;              1: File not found
-;              2: Other error
+;              1: Other error
+;              2: File not found
 ;         B  = Amount of bytes read if no error, 0 on error
 ;         DE = Pointer after last byte read
 
@@ -649,4 +649,101 @@ _DSK_GET_CURDIR_NO_CONFIG:
 _DSK_OPEN_MAIN_DIR_EMPTY:
     pop de
     ld b,0
+    ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_REMOUNT: Mount again the current file (per CURDIR and CURFILE)
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of 65 byte buffer for directory name
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: No CURDIR file, or directory doesn't exist
+;              3: No CURFILE file, or file doesn't exist
+
+DSK_REMOUNT:
+    push iy
+    ld iy,-65-13
+    add iy,sp
+    ld sp,iy
+    call _DSK_REMOUNT
+    ld iy,65+13
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_REMOUNT:
+    call WK_GET_STORAGE_DEV_FLAGS   ;No disk mounted for now
+    and 0FEh
+    call WK_SET_STORAGE_DEV_FLAGS
+
+    push iy
+    pop de
+    ld hl,DSK_CURDIR_S
+    ld b,64
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    ret nz
+    ld (de),a
+
+    push iy
+    pop hl
+    ld bc,65
+    add hl,bc
+    ex de,hl
+    ld hl,DSK_CURFILE_S
+    ld b,12
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    jr z,_DSK_REMOUNT_OK
+    cp 1
+    ret z
+    ld a,3
+    ret
+_DSK_REMOUNT_OK:
+    ld (de),a
+
+    push iy
+    pop hl
+    ld a,1
+    call DSK_CHANGE_DIR
+    cp 1
+    ret z
+    cp 2
+    ret z
+    cp 3
+    ld a,1
+    ret z  ;It's a file, not a dir
+
+    push iy
+    pop hl
+    ld bc,65
+    add hl,bc
+    call HWF_OPEN_FILE_DIR
+    jr z,_DSK_REMOUNT_OK_2
+    cp 1
+    ret z
+    ld a,3
+    ret
+
+_DSK_REMOUNT_OK_2:
+    ld a,1
+    ret c   ;It's a dir, not a file
+
+    call HWF_GET_FILE_ATTR
+    dec a
+    jr z,_DSK_REMOUNT_OK_3 ;Error, assume not read-only
+    ld a,b    ;Attributes byte, read-only in bit 0
+    rla ;Now read-only in bit 1
+    and 2
+
+_DSK_REMOUNT_OK_3:
+    ld b,a
+    call WK_GET_STORAGE_DEV_FLAGS
+    or 1+4  ;Disk present+disk has changed
+    or b  ;Read-only flag (maybe)
+    call WK_SET_STORAGE_DEV_FLAGS
+
+    xor a
     ret

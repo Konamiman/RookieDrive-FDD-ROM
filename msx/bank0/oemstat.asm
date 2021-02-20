@@ -156,18 +156,18 @@ OEMC_USBMENU:
     ld ix,DO_BOOT_MENU
     ld iy,ROM_BANK_1
     call CALL_BANK
-    dec a
+    cp 3
     ld hl,OEM_S_NO_STDEV
     jp z,OEM_PRINT_AND_END
-    dec a
+    cp 2
     ld hl,OEM_S_NO_MEM
     jp z,OEM_PRINT_AND_END
     jp OEM_END
 
 OEM_S_NO_STDEV:
-    db "No USB storage device present",0
+    db "No USB storage device present",7,0
 OEM_S_NO_MEM:
-    db "Not enough memory",0
+    db "Not enough memory",7,0
 
 
 ; -----------------------------------------------------------------------------

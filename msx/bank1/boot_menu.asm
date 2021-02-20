@@ -23,7 +23,7 @@ BM_MAX_DIR_NAME_LENGTH: equ 64
 ;             1 if ESC or CTRL+STOP was pressed
 ;             2 if not enough memory to start the menu
 ;             3 if no storage device is present
-;             4 if error setting initial directory (not ehrn F5-ing)
+;             4 if error setting initial directory (not when F5-ing)
 ; -----------------------------------------------------------------------------
 
 DO_BOOT_MENU:
@@ -82,6 +82,15 @@ DO_BOOT_MENU:
     push af
     call BM_SCREEN_REST
     call KILBUF
+
+    ld a,(iy+BM_INITIAL_DIR)
+    or a
+    jr z,_BM_NO_REMOUNT
+    pop af
+    push af
+    cp 1
+    call z,DSK_REMOUNT
+_BM_NO_REMOUNT:
     pop af
 
     ld iy,BM_VARS_LEN
