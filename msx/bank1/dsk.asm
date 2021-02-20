@@ -49,7 +49,9 @@ DSK_ROOT_DIR_S:
     db "/",0
 
 DSK_MAIN_DIR_S:
-    db "MSX",0
+    db "MSX"
+DSK_ZERO_S:
+    db 0
 
 
 ; -----------------------------------------------------------------------------
@@ -648,5 +650,3 @@ _DSK_OPEN_MAIN_DIR_EMPTY:
     pop de
     ld b,0
     ret
-
-

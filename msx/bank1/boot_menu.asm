@@ -12,18 +12,27 @@ BM_MAX_DIR_NAME_LENGTH: equ 64
 ; 
 ; The starting point is CURDIR, or if it isn't set, the main directory.
 ;
+; Input:  A  = What should the initial directory be:
+;              0: The main directory
+;              1: The current directory
+;              The initial directory is to be set:
+;              - When the menu starts
+;              - When F5 is pressed
+;              - When exiting without mounting
 ; Output: A = 0 if a file was actually mounted
 ;             1 if ESC or CTRL+STOP was pressed
 ;             2 if not enough memory to start the menu
 ;             3 if no storage device is present
-;             4 if error getting initial directory
+;             4 if error setting initial directory (not ehrn F5-ing)
 ; -----------------------------------------------------------------------------
 
 DO_BOOT_MENU:
 
     ;Return with error if no storage device was found
 
+    push af
     call USB_CHECK_DEV_CHANGE
+    pop hl
 
     call WK_GET_STORAGE_DEV_FLAGS
     ld a,3
@@ -31,6 +40,7 @@ DO_BOOT_MENU:
 
     ;Return with error if we have less than 1.5K of free space
 
+    push hl
     ld hl,0
     add hl,sp
     ld de,(STREND)
@@ -39,6 +49,7 @@ DO_BOOT_MENU:
     ld a,h
     cp 6
     ld a,2
+    pop de
     ret c
 
     ld bc,100+660+BM_VARS_LEN   ;Work stack space + space for one page of 0s + space for variables
@@ -46,15 +57,19 @@ DO_BOOT_MENU:
     sbc hl,bc
     push hl
     pop bc
+    push de
     ld de,11
     call DIVIDE_16
+    pop de
 
+    push iy
     ld iy,-BM_VARS_LEN
     add iy,sp
     ld sp,iy
 
     ld (iy+BM_MAX_FILES_TO_ENUM),c
     ld (iy+BM_MAX_FILES_TO_ENUM+1),b
+    ld (iy+BM_INITIAL_DIR),d
 
     call BM_SCREEN_BAK
     ld a,40
@@ -72,6 +87,7 @@ DO_BOOT_MENU:
     ld iy,BM_VARS_LEN
     add iy,sp
     ld sp,iy
+    pop iy
 
     ret
 
@@ -93,42 +109,12 @@ DO_BOOT_MENU_MAIN:
     call POSIT
     call BM_DRAW_LINE
 
-    ; Try opening CURDIR or the main directory on the device
+    ; Try opening the initial directory
 
-    if USE_FAKE_STORAGE_DEVICE = 0
-
-    call BM_GET_CUR_DIR_ADD
-    push hl
-    call DSK_GET_CURDIR
-    pop hl
+    call BM_OPEN_INITIAL_DIR
     or a
-    jr z,_BM_MAIN_GETDIR_OK
-    ld hl,BM_ERROR_OPENING_FILE_S
-    call BM_PRINT_STATUS_WAIT_KEY
     ld a,4
-    ret
-
-_BM_MAIN_GETDIR_OK:
-    ld (iy+BM_CUR_DIR_LENGTH),b
-
-    ld b,0
-    ld a,(hl)
-    or a
-    jr z,_BM_CALC_DIR_LEVEL_END
-    inc b   ;Non-empty dir: start at level 1, each "/" increases level
-_BM_CALC_DIR_LEVEL:
-    ld a,(hl)
-    inc hl
-    or a
-    jr z,_BM_CALC_DIR_LEVEL_END
-    cp "/"
-    jr nz,_BM_CALC_DIR_LEVEL
-    inc b
-    jr _BM_CALC_DIR_LEVEL
-_BM_CALC_DIR_LEVEL_END:
-    ld (iy+BM_CUR_DIR_LEVEL),b
-
-    endif
+    ret nz
 
     call BM_PRINT_CUR_DIR
     call BM_ENUM_FILES
@@ -195,29 +181,35 @@ _BM_MAIN_LOOP:
 ;--- Start over after F5 is pressed
 
 BM_START_OVER:
-    xor a
-    ld (iy+BM_NUM_FILES),a
-    ld (iy+BM_NUM_FILES+1),a
-    inc a
-    ld (iy+BM_CUR_PAGE),a
-    ld (iy+BM_NUM_PAGES),a
-
     call BM_CLEAR_INFO_AREA
     xor a
     ld (iy+BM_CUR_DIR),a
+    call BM_ADJUST_DIR_VARS
     call BM_PRINT_CUR_DIR
     ld hl,BM_RESETTING_DEVICE_S
     call BM_PRINT_STATUS
 
+    ld hl,0
     call HWF_MOUNT_DISK
-    jp nc,DO_BOOT_MENU_MAIN
+    jr nc,_BM_START_OVER_OK
 
+    xor a
+    ld (iy+BM_NUM_FILES),a
+    ld (iy+BM_NUM_FILES+1),a
+    call WK_SET_STORAGE_DEV_FLAGS
+    inc a
+    ld (iy+BM_CUR_PAGE),a
+    ld (iy+BM_NUM_PAGES),a
     ld a,0FFh
     ld (iy+BM_NO_STOR_DEV),a
     ld hl,BM_NO_DEV_OR_NO_STOR_S
     call BM_PRINT_STATUS
-    
+    call CHGET
     jp _BM_MAIN_LOOP
+
+_BM_START_OVER_OK:
+    call WK_INIT_FOR_STORAGE_DEV
+    jp DO_BOOT_MENU_MAIN
 
 
 ; -----------------------------------------------------------------------------
@@ -1362,6 +1354,84 @@ BM_GET_CUR_DIR_ADD:
     ret
 
 
+;--- Adjust variables after BM_CUR_DIR has changed
+
+BM_ADJUST_DIR_VARS:
+    call BM_GET_CUR_DIR_ADD
+    push hl
+    call BM_STRLEN
+    pop hl
+    ld (iy+BM_CUR_DIR_LENGTH),b
+
+    ld b,0
+    ld a,(hl)
+    or a
+    jr z,_BM_CALC_DIR_LEVEL_END
+    inc b   ;Non-empty dir: start at level 1, each "/" increases level
+_BM_CALC_DIR_LEVEL:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,_BM_CALC_DIR_LEVEL_END
+    cp "/"
+    jr nz,_BM_CALC_DIR_LEVEL
+    inc b
+    jr _BM_CALC_DIR_LEVEL
+_BM_CALC_DIR_LEVEL_END:
+    ld (iy+BM_CUR_DIR_LEVEL),b
+
+    ret
+
+
+;--- Try opening the initial directory
+;    Output: A = 0 if ok, 1 if error
+
+BM_OPEN_INITIAL_DIR:
+    if USE_FAKE_STORAGE_DEVICE = 0
+
+    ld a,(iy+BM_INITIAL_DIR)
+    or a
+    jr nz,_BM_OPEN_INITIAL_CURDIR
+
+_BM_OPEN_INITIAL_MAIN:
+    call DSK_OPEN_MAIN_DIR
+    jr nz,_BM_MAIN_GETDIR_ERR
+    ld hl,DSK_MAIN_DIR_S
+    jr c,_BM_OPEN_INITIAL_MAIN_2
+    ld hl,DSK_ROOT_DIR_S
+_BM_OPEN_INITIAL_MAIN_2:
+    push hl
+    call BM_GET_CUR_DIR_ADD
+    ex de,hl
+    pop hl
+    ld bc,BM_MAX_DIR_NAME_LENGTH+1
+    ldir
+    jr _BM_OPEN_INITIAL_MAIN_OK
+
+_BM_OPEN_INITIAL_CURDIR:
+    call BM_GET_CUR_DIR_ADD
+    call DSK_GET_CURDIR
+    or a
+    jr nz,_BM_MAIN_GETDIR_ERR
+
+_BM_OPEN_INITIAL_MAIN_OK:
+    call BM_ADJUST_DIR_VARS
+    xor a
+    ret
+
+_BM_MAIN_GETDIR_ERR
+    ld hl,BM_ERROR_INITIAL_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    ld a,1
+    ret
+
+    else
+
+    xor a
+    ret
+
+    endif
+
 ; -----------------------------------------------------------------------------
 ; Text strings
 ; -----------------------------------------------------------------------------
@@ -1406,6 +1476,9 @@ BM_FILE_NOT_FOUND_S:
 
 BM_ERROR_OPENING_FILE_S:
     db "Error opening file/dir! Press any key",0
+
+BM_ERROR_INITIAL_S:
+    db "Error entering initial dir! Press any key",0
 
 BM_MOUNTING_BOOTING_S:
     db "Mounting file and booting...",0
@@ -1476,6 +1549,7 @@ BM_MAX_FILES_TO_ENUM: equ BM_CUR_DIR_LENGTH+1
 BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2
 BM_LINLEN_BAK: equ BM_SCRMOD_BAK+1
 BM_FNK_BAK: equ BM_LINLEN_BAK+1
+BM_INITIAL_DIR: equ BM_FNK_BAK+1
 
 BM_VARS_END: equ BM_FNK_BAK+1
 BM_VARS_LEN: equ BM_VARS_END-BM_VARS_START
