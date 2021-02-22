@@ -335,6 +335,10 @@ _DSKIO_IMPL_STDEV:
     push hl
     push bc
 
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 0FBh    ;reset  "Disk changed" flag
+    call WK_SET_STORAGE_DEV_FLAGS
+
     ld h,0
     ld l,d
     ld d,e
@@ -591,16 +595,14 @@ DSKCHG_IMPL:
 
 _DSKCHG_IMPL_STDEV:
     pop af
+    
     call WK_GET_STORAGE_DEV_FLAGS
-    ld b,a
-    and 0BFh
-    call WK_SET_STORAGE_DEV_FLAGS
-
-    ld a,b
     and 4
     ld a,0
     ld b,1  ;Unchanged
     ret z
+    call GETDPB_IMPL
+    xor a
     ld b,0FFh   ;Changed
     ret
 

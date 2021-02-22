@@ -629,6 +629,8 @@ HWF_OPEN_FILE_DIR:
     ld b,a
     cp USB_ERR_OK
     ld a,0
+    scf
+    ccf
     ret z   ;NC, Z
 
     ld a,b

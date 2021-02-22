@@ -240,8 +240,9 @@ PRINT_ERROR:
 ; Strings
 
 ROOKIE_S:
-	db "Rookie Drive FDD BIOS v1.0",13,10
-	db "(c) Konamiman 2018",13,10
+	db "Rookie Drive NestorBIOS v2.0",13,10
+    db "Prerelease version 2021.02.22",13,10
+	db "(c) Konamiman 2018,2021",13,10
 	db 13,10
     db "Initializing device...",13
 	db 0

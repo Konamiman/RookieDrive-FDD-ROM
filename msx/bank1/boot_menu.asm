@@ -160,8 +160,7 @@ _BM_MAIN_LOOP:
 
     ld de,0407h ;ESC pressed?
     call BM_KEY_CHECK
-    ld a,1
-    ret z
+    jp z,BM_DO_ESC
 
     call BM_F5_IS_PRESSED
     jp z,BM_START_OVER
@@ -227,6 +226,23 @@ _BM_START_OVER_OK:
 ; These are JP-ed in, so they must finish by JP-ing to
 ; either BM_ENTER_MAIN_LOOP or _BM_MAIN_LOOP.
 ; -----------------------------------------------------------------------------
+
+
+;--- ESC key press handler
+
+BM_DO_ESC:
+    ld de,0106h
+    call BM_KEY_CHECK_CORE
+    ld a,1
+    ret nz
+
+    ld hl,BM_CHANGING_EXITING_S
+    call BM_PRINT_STATUS
+    call BM_GET_CUR_DIR_ADD
+    ld a,1
+    call DSK_CHANGE_DIR_U
+    ld a,5
+    ret
 
 
 ;--- ENTER key press handler
@@ -1066,12 +1082,7 @@ _BM_GET_LAST_DIR_PNT_LOOP:
 ;    Output: Z if key is pressed, NZ if not
 
 BM_KEY_CHECK:
-    ld b,d
-    ld d,0
-    ld hl,NEWKEY
-    add hl,de
-    ld a,(hl)
-    and b
+    call BM_KEY_CHECK_CORE
     ret nz
 
 _BM_KEY_CHECK_WAIT_RELEASE:
@@ -1080,6 +1091,17 @@ _BM_KEY_CHECK_WAIT_RELEASE:
     and b
     jr z,_BM_KEY_CHECK_WAIT_RELEASE
     xor a
+    ret
+
+    ;This version doesn't wait for key release
+
+BM_KEY_CHECK_CORE:
+    ld b,d
+    ld d,0
+    ld hl,NEWKEY
+    add hl,de
+    ld a,(hl)
+    and b
     ret
 
 
@@ -1490,10 +1512,13 @@ BM_ERROR_INITIAL_S:
     db "Error entering initial dir! Press any key",0
 
 BM_MOUNTING_BOOTING_S:
-    db "Mounting file and booting...",0
+    db "Mounting file...",0
 
 BM_ENTERING_DIR_S:
     db "Entering directory...",0
+
+BM_CHANGING_EXITING_S:
+    db "Changing current dir and exiting...",0
 
 BM_DOTS_BAR_S:
     db "/.../",0
@@ -1519,10 +1544,16 @@ BM_HELP_1:
     db 13,10
     db " F5: Reset device and start over",13,10
     db 13,10
-    db " CTRL+STOP/ESC: Exit without mounting"
+
     db 0
 
 BM_HELP_2:
+    db " ESC: Exit without mounting",13,10
+    db 13,10
+    db " SHIFT+ESC: Set current dir and",13,10
+    db "   exit without mounting",13,10
+    db 13,10
+    db 13,10
     db " After boot it is possible to switch",13,10
     db " to another disk image file from the",13,10
     db " same directory (up to 36 files).",13,10
