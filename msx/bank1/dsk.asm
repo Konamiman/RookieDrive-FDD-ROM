@@ -747,3 +747,218 @@ _DSK_REMOUNT_OK_3:
 
     xor a
     ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_GET_DEFAULT: Get the name of the default file in current directory
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of 13 byte buffer for file name
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File not found (directory is empty)
+
+DSK_GET_DEFAULT:
+    push iy
+    ld iy,-32
+    add iy,sp
+    ld sp,iy
+    call _DSK_GET_DEFAULT
+    ld iy,32
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_GET_DEFAULT:
+
+    ;* First check if a DEFAULT.DSK file exists
+
+    push hl
+    call DSK_DEFAULT_EXISTS
+    pop hl
+    cp 1
+    ret z
+
+    or a
+    jr nz,_DSK_GET_DEFAULT_NODEF
+
+    ; DEFAULT.DSK exists, copy to destination for now
+
+    push hl
+    ex de,hl
+    ld hl,DSK_DEFAULT_S
+    ld bc,12
+    ldir
+    pop hl
+    jr _DSK_GET_DEFAULT_2
+
+    ; DEFAULT.DSK doesn't exist, see if any suitable file exists at all
+
+_DSK_GET_DEFAULT_NODEF:
+    push hl
+    call DSK_GET_FIRST
+    pop hl
+    or a
+    ret nz
+
+    push hl
+    ex de,hl
+    push iy
+    pop hl
+    call BM_GENERATE_FILENAME
+    ld (hl),0
+    pop hl
+
+    ;* Now we have either DEFAULT.DSK or the name of the first existing file
+    ;  copied to the destination address. See if there's a suitable DEFFILE file
+    ;  and if so extract and use its contents, if not just return.
+    ;  No errors will be returned past this point.
+
+_DSK_GET_DEFAULT_2:
+    push hl
+    push iy
+    pop de
+    ld hl,DSK_DEFFILE_S
+    ld b,12
+    call DSK_READ_CONFIG_FILE
+    pop hl
+    or a
+    ld a,0
+    ret nz
+    ld (de),a
+    ld a,b
+    or a
+    ret z
+
+    ; We got a file name from DEFFILE, so copy its contents
+    ; to the output buffer.
+
+    ex de,hl
+    push iy
+    pop hl
+    ld bc,13
+    ldir
+
+    xor a
+    ret
+
+DSK_DEFFILE_S:
+    db "DEFFILE",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_DEFAULT_EXISTS: Does the DEFAULT.DSK file exist in current directory?
+;
+; We need to do the search in a weird way because there's no way to initiate
+; a file search without specifying 
+; -----------------------------------------------------------------------------
+; Input:  IY = Address of 32 byte buffer for directory entry
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File doesn't exist
+
+DSK_DEFAULT_EXISTS:
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    ld hl,DSK_DEFAST_S
+    call CH_WRITE_STRING
+    ld a,CH_CMD_FILE_OPEN
+    out (CH_COMMAND_PORT),a
+
+_DSK_DEFAULT_EXISTS_LOOP:
+    call CH_WAIT_INT_AND_GET_RESULT
+    ld b,a
+    cp USB_ERR_MISS_FILE
+    ld a,2
+    ret z
+    ld a,b
+    cp CH_ST_INT_DISK_READ
+    ld a,1
+    ret nz
+
+    push iy
+    pop hl
+    call CH_READ_DATA
+    ld a,b
+    cp 32
+    ld a,1
+    ret nz
+
+    ld a,(iy+10)
+    cp "K"
+    jr nz,_DSK_DEFAULT_EXISTS_NEXT
+
+    ld a,(iy+11)
+    and 11010b  ;Directory, hidden or volume?
+    ld a,2
+    ret nz
+
+    xor a
+    ret
+
+_DSK_DEFAULT_EXISTS_NEXT:
+    ld a,CH_CMD_FILE_ENUM_GO
+    out (CH_COMMAND_PORT),a
+    jr _DSK_DEFAULT_EXISTS_LOOP
+
+DSK_DEFAST_S:
+    db "DEFAULT.DS*",0
+DSK_DEFAULT_S:
+    db "DEFAULT.DSK",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_GET_FIRST: Get the first available file in the current directory
+;
+; Hidden files and files starting with "_" don't count.
+; -----------------------------------------------------------------------------
+; Input:  IY = Address of 32 byte buffer for directory entry
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File doesn't exist
+
+DSK_GET_FIRST:
+    ld a,CH_CMD_SET_FILE_NAME
+    out (CH_COMMAND_PORT),a
+    ld a,'*'
+    out (CH_DATA_PORT),a
+    xor a
+    out (CH_DATA_PORT),a
+    ld a,CH_CMD_FILE_OPEN
+    out (CH_COMMAND_PORT),a
+
+_DSK_GET_FIRST_LOOP:
+    call CH_WAIT_INT_AND_GET_RESULT
+    ld b,a
+    cp USB_ERR_MISS_FILE
+    ld a,2
+    ret z
+    ld a,b
+    cp CH_ST_INT_DISK_READ
+    ld a,1
+    ret nz
+
+    push iy
+    pop hl
+    call CH_READ_DATA
+    ld a,b
+    cp 32
+    ld a,1
+    ret nz
+
+    ld a,(iy)
+    cp '_'
+    jr z,_DSK_GET_FIRST_LOOP_NEXT
+
+    ld a,(iy+11)
+    and 11010b  ;Directory, hidden or volume?
+    jr nz,_DSK_GET_FIRST_LOOP_NEXT
+
+    xor a
+    ret
+
+_DSK_GET_FIRST_LOOP_NEXT:
+    ld a,CH_CMD_FILE_ENUM_GO
+    out (CH_COMMAND_PORT),a
+    jr _DSK_GET_FIRST_LOOP
+
