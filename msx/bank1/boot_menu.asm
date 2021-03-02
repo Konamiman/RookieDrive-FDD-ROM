@@ -231,7 +231,7 @@ _BM_START_OVER_OK:
 ;--- ESC key press handler
 
 BM_DO_ESC:
-    ld de,0106h
+    ld de,0106h ;SHIFT is pressed?
     call BM_KEY_CHECK_CORE
     ld a,1
     ret nz
@@ -264,9 +264,10 @@ BM_DO_ENTER:
     ;* It's a file
 
 BM_DO_ENTER_FILE:
-    call BM_CLEAR_INFO_AREA
     ld hl,BM_MOUNTING_BOOTING_S
+BM_DO_ENTER_FILE_2:
     call BM_PRINT_STATUS
+    call BM_CLEAR_INFO_AREA
 
     call BM_GET_CUR_DIR_ADD
     call DSK_WRITE_CURDIR_FILE
@@ -287,11 +288,17 @@ _BM_DO_ENTER_OPEN_ERR:
     ld hl,BM_ERROR_OPENING_FILE_S   ;Other error or it's a dir
 _BM_DO_ENTER_PRINT_ERR:
     call BM_PRINT_STATUS_WAIT_KEY
-    call BM_PRINT_MAIN_STATUS
 
 _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
     call BM_ENTER_IS_PRESSED
     jr z,_BM_DO_ENTER_WAIT_RELEASE
+
+    ld hl,BM_SCANNING_DIR_S
+    call BM_PRINT_STATUS
+    call BM_GET_CUR_DIR_ADD
+    ld a,1
+    call DSK_CHANGE_DIR_U
+    call BM_ENUM_FILES
     jp BM_ENTER_MAIN_LOOP ; _BM_MAIN_LOOP
 
 _BM_DO_ENTER_FILE_SUCCESS:
@@ -350,8 +357,32 @@ _BM_COPY_DIR_NAME_LOOP:
     ld (iy+BM_CUR_DIR_LENGTH),a
 
     call BM_PRINT_CUR_DIR
+
+    ld de,0106h ;SHIFT is pressed?
+    call BM_KEY_CHECK_CORE
+    jr z,_BM_DO_MOUNT_DEFAULT
+
+_BM_DO_ENTER_DIR_END:
     call BM_ENUM_FILES
     jp BM_ENTER_MAIN_LOOP
+
+    ;* It's a directory and SHIFT was pressed
+
+_BM_DO_MOUNT_DEFAULT:
+    call BM_GET_BUF_ADD
+    push hl
+    call DSK_GET_DEFAULT
+    pop hl
+
+    or a
+    ld hl,BM_MOUNTING_DEF_S
+    jp z,BM_DO_ENTER_FILE_2
+    cp 2
+    jr z,_BM_DO_ENTER_DIR_END
+
+    ld hl,BM_ERR_RETRIEVING_DEFAULT_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    jr _BM_DO_ENTER_DIR_END
 
 
 ;--- Print the string HL in the status area and wait for a key press
@@ -1519,6 +1550,12 @@ BM_ENTERING_DIR_S:
 
 BM_CHANGING_EXITING_S:
     db "Changing current dir and exiting...",0
+
+BM_MOUNTING_DEF_S:
+    db "Mounting default file for dir...",0
+
+BM_ERR_RETRIEVING_DEFAULT_S:
+    db "Error retrieving default file for dir!",0
 
 BM_DOTS_BAR_S:
     db "/.../",0
