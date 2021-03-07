@@ -80,6 +80,7 @@ OEM_COMMANDS:
     ;    Resets USB hardware and prints device info, just like at boot time
 
 OEMC_USBRESET:
+    ld a,1
     ld ix,VERBOSE_RESET
     ld iy,ROM_BANK_1
     call CALL_BANK

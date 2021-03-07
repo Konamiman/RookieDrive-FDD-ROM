@@ -67,6 +67,7 @@ DSK_ZERO_S:
 ;         DE = Pointer after last byte read
 
 DSK_READ_CONFIG_FILE:
+    ;TODO: Allow CR or LF as file terminator
     push hl
     push de
     push bc
@@ -962,3 +963,225 @@ _DSK_GET_FIRST_LOOP_NEXT:
     out (CH_COMMAND_PORT),a
     jr _DSK_GET_FIRST_LOOP
 
+
+; -----------------------------------------------------------------------------
+; DSK_GET_BOOTDIR: Get the boot directory
+;
+; Hidden files and files starting with "_" don't count.
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of 64 byte buffer for the directory
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File doesn't exist
+
+DSK_GET_BOOTDIR:
+    ld (hl),0
+    ex de,hl
+    ld hl,DSK_BOOTDIR_S
+    ld b,64
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    ret nz
+    ld (de),a
+    ret
+
+DSK_BOOTDIR_S:
+    db "BOOTDIR",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_CHANGE_BOOTDIR: Change to the boot directory or the main directory
+; -----------------------------------------------------------------------------
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_CHANGE_BOOTDIR:
+    push iy
+    ld iy,-64
+    add iy,sp
+    ld sp,iy
+    call _DSK_CHANGE_BOOTDIR
+    ld iy,64
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_CHANGE_BOOTDIR:
+    push iy
+    pop hl
+    call DSK_GET_BOOTDIR
+    or a
+    jp nz,_DSK_CHANGE_BOOTDIR_ERR
+
+    push iy
+    pop hl
+    ld a,1
+    call DSK_CHANGE_DIR_U  
+    or a
+    ret z
+
+    ; BOOTDIR doesn't exist or can't change to the dir it points to,
+    ; so fallback to setting the main dir
+
+_DSK_CHANGE_BOOTDIR_ERR:
+    ld hl,DSK_MAIN_DIR_S
+    ld a,1
+    call DSK_CHANGE_DIR_U
+    or a
+    ret z
+
+    ld hl,DSK_ROOT_DIR_S
+    jp DSK_CHANGE_DIR_U
+
+
+; -----------------------------------------------------------------------------
+; DSK_GET_BOOTMODE: Get current boot mode
+; -----------------------------------------------------------------------------
+; Output: A  = Boot mode (1 to 4)
+
+DSK_GET_BOOTMODE:
+    push iy
+    ld iy,-1
+    add iy,sp
+    ld sp,iy
+    call _DSK_GET_BOOTMODE
+    ld iy,1
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_GET_BOOTMODE:
+    ld hl,DSK_BOOTMODE_S
+    push iy
+    pop de
+    ld b,1
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    ld a,1
+    ret nz
+    
+    ld a,b
+    or a
+    ld a,1
+    ret z
+
+    ;Return value read minus "0" if it's "1" to "4", return 1 otherwise
+
+    ld a,(iy)
+    sub "0"
+    ld b,a
+    or a
+    ld a,1
+    ret z
+    ld a,b
+    cp 5
+    ret c
+    ld a,1
+    ret
+
+DSK_BOOTMODE_S:
+    db "BOOTMODE",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_DO_BOOT_PROC: Do the boot procedure
+; -----------------------------------------------------------------------------
+; Output: A  = 0: Do the computer boot procedure
+;              1: Do the device change boot procedure
+
+DSK_DO_BOOT_PROC:
+    push iy
+    ld iy,-13
+    add iy,sp
+    ld sp,iy
+    call _DSK_DO_BOOT_PROC
+    ld iy,13
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_DO_BOOT_PROC:
+    ld (iy),a
+
+    call WK_GET_STORAGE_DEV_FLAGS   ;No disk mounted for now
+    and 0FEh
+    call WK_SET_STORAGE_DEV_FLAGS
+
+    call DSK_GET_BOOTMODE
+
+    dec a
+    jr z,_DSK_DO_BOOT_1
+    dec a
+    jr z,_DSK_DO_BOOT_2
+    dec a
+    jr z,_DSK_DO_BOOT_3
+    jr _DSK_DO_BOOT_4
+
+
+    ;* Boot mode 1: 
+    ;  - Set boot dir
+    ;  - If doing computer boot, show boot menu
+
+_DSK_DO_BOOT_1:
+    call DSK_CHANGE_BOOTDIR
+    or a
+    ret nz
+
+    ld a,(iy)
+    or a
+    ret nz
+
+    ld a,1
+    jp DO_BOOT_MENU
+
+
+    ;* Boot mode 2: 
+    ;  - Set boot dir and return
+
+_DSK_DO_BOOT_2:
+    jp DSK_CHANGE_BOOTDIR
+
+
+    ;* Boot mode 3:
+    ;  - Set boot dir
+    ;  - Mount default file
+
+_DSK_DO_BOOT_3:
+    call DSK_CHANGE_BOOTDIR
+    or a
+    ret nz
+
+    push iy
+    pop hl
+    inc hl
+    inc hl
+    push hl
+    call DSK_GET_DEFAULT
+    pop hl
+    or a
+    ret nz
+
+    ;We need to set the dir again after DSK_GET_DEFAULT
+    ;since it will have read a config file.
+    push hl
+    call DSK_CHANGE_BOOTDIR
+    pop hl
+    or a
+    ret nz
+
+    xor a
+    jp DSK_MOUNT
+
+
+    ; * Boot mode 4:
+    ; - Remount per CURDIR and CURFILE
+    ; - On error, fallback to mode 3
+
+_DSK_DO_BOOT_4:
+    call DSK_REMOUNT
+    or a
+    ret z
+    jr _DSK_DO_BOOT_3

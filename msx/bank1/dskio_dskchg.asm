@@ -57,6 +57,16 @@ _DSKIO_ERR_PARAM:
     ret
 
 _DSKIO_OK_UNIT:
+    push hl
+    push de
+    push bc
+    call USB_CHECK_DEV_CHANGE
+    pop bc
+    pop de
+    pop hl
+    ld a,12
+    ret c   ;No device is connected
+
     call WK_GET_STORAGE_DEV_FLAGS
     jp nz,_DSKIO_IMPL_STDEV
 
@@ -71,16 +81,6 @@ _DSKIO_OK_UNIT:
     ;ld a,b
     or a
     ret z   ;Nothing to read
-
-    push hl
-    push de
-    push bc
-    call USB_CHECK_DEV_CHANGE
-    pop bc
-    pop de
-    pop hl
-    ld a,12
-    ret c   ;No device is connected
 
     push hl
     push de
@@ -355,6 +355,11 @@ _DSKIO_IMPL_STDEV:
     or a
     jr z,_DSKIO_IMPL_STDEV_SEEKOK
 
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 81h
+    cp 80h
+    jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
+
     pop hl  ;Discard input AF
     dec a
     ld a,8  ;Record not found
@@ -503,6 +508,13 @@ _DSKIO_IMPL_STDEV_XFER_ERR:
     scf
     ret
 
+_DSKIO_IMPL_POPAF_RET_ERR:
+    pop af
+    ld b,0
+    ld a,2
+    scf
+    ret
+
 
     ;-- Check if transfer can be done directly or if we need to use XFER
     ;   (XFER will be needed if page 1 is involved in the transfer).
@@ -562,11 +574,6 @@ CHECK_XFER_IS_NEEDED:
 DSKCHG_IMPL:
     call CHECK_SAME_DRIVE
 
-    push af
-    call WK_GET_STORAGE_DEV_FLAGS
-    jp nz,_DSKCHG_IMPL_STDEV
-    pop af
-
     cp 2
     ld a,12
     ccf
@@ -577,6 +584,11 @@ DSKCHG_IMPL:
     pop hl
     ld a,12
     ret c   ;No device is connected
+
+    push af
+    call WK_GET_STORAGE_DEV_FLAGS
+    jp nz,_DSKCHG_IMPL_STDEV
+    pop af
 
     push hl
     call TEST_DISK
@@ -594,6 +606,10 @@ DSKCHG_IMPL:
     ret
 
 _DSKCHG_IMPL_STDEV:
+    and 81h
+    cp 80h
+    jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
+
     pop af
     
     call WK_GET_STORAGE_DEV_FLAGS

@@ -27,6 +27,7 @@
 ; -----------------------------------------------------------------------------
 
 CHOICE_IMPL:
+    ;TODO: Disable for storage devices
     ld hl,CHOICE_S
     ret
 
@@ -45,6 +46,7 @@ CHOICE_IMPL:
 ; -----------------------------------------------------------------------------
 
 DSKFMT_IMPL:
+    ;TODO: Disable for storage devices
     ld c,a
     ld a,d
     call CHECK_SAME_DRIVE

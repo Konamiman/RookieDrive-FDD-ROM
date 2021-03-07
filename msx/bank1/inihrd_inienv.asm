@@ -41,14 +41,18 @@ INIENV_IMPL:
     push hl
     endif
 
+    xor a
+    call WK_SET_LAST_REL_DRIVE
+
+    xor a
     call VERBOSE_RESET
     ld b,30
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
 
-    call HWF_MOUNT_DISK
-    ret c
+    ret
+
 
     call WK_INIT_FOR_STORAGE_DEV
     xor a

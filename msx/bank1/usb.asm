@@ -52,9 +52,15 @@ _USB_CHECK_DEV_CHANGE_CHANGED:
 
     ;* Device present but it's not a FDD: check if it's a storage device
 
+    call WK_GET_STORAGE_DEV_FLAGS   ;No disk mounted for now
+    and 0FEh
+    call WK_SET_STORAGE_DEV_FLAGS
+    
     call HWF_MOUNT_DISK
     jr c,_USB_CHECK_DEV_CHANGE_NO_DEV
     call WK_INIT_FOR_STORAGE_DEV
+    ld a,1
+    call DSK_DO_BOOT_PROC
     or a
     ret
 

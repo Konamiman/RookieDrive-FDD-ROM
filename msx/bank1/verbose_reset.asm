@@ -4,13 +4,30 @@
 ; This routine resets the USB hardware, resets and initializes the device,
 ; and prints the device name or the appropriate error message.
 ; It is executed at boot time and by CALL USBRESET.
-
+;
+; Inpuy: A = 0: Called from computer boot
+;            1: Called from CALL USBRESET
 
 VERBOSE_RESET:
+    push iy
+    ld iy,-1
+    add iy,sp
+    ld sp,iy
+    call _VERBOSE_RESET
+    ld iy,1
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_VERBOSE_RESET:
+    ld (iy),a
+
     call HW_TEST
     ld hl,NOHARD_S
     jp c,PRINT
 
+    ;TODO: Use stack instead
     ld hl,0C000h
     call HWF_MOUNT_DISK
     jr c,_HW_RESET_NO_STOR
@@ -35,6 +52,8 @@ _HW_RESET_PRINT_GO:
     jr _HW_RESET_PRINT
 _HW_RESET_PRINT_END:
     call WK_INIT_FOR_STORAGE_DEV
+    ld a,(iy)
+    call DSK_DO_BOOT_PROC
     ret
 
 _HW_RESET_NO_STOR:

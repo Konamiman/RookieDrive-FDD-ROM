@@ -7,6 +7,8 @@
 
 BM_MAX_DIR_NAME_LENGTH: equ 64
 
+;TODO: Remove input parameter in A
+
 ; -----------------------------------------------------------------------------
 ; Boot menu entry point
 ; 
@@ -217,6 +219,8 @@ BM_START_OVER:
 
 _BM_START_OVER_OK:
     call WK_INIT_FOR_STORAGE_DEV
+    ld a,1
+    call DSK_DO_BOOT_PROC
     jp DO_BOOT_MENU_MAIN
 
 
@@ -1456,7 +1460,8 @@ BM_OPEN_INITIAL_DIR:
     jr nz,_BM_OPEN_INITIAL_CURDIR
 
 _BM_OPEN_INITIAL_MAIN:
-    call DSK_OPEN_MAIN_DIR
+    call DSK_CHANGE_BOOTDIR
+    or a
     jr nz,_BM_MAIN_GETDIR_ERR
     ld hl,DSK_MAIN_DIR_S
     jr c,_BM_OPEN_INITIAL_MAIN_2
