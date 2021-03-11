@@ -180,6 +180,9 @@ _BM_MAIN_LOOP:
     call BM_F1_IS_PRESSED
     jp z,BM_DO_HELP
 
+    call BM_F2_IS_PRESSED
+    jp z,BM_DO_CONFIG
+
     call BM_CURSOR_IS_PRESSED
     or a
     jr z,_BM_MAIN_LOOP
@@ -394,8 +397,11 @@ _BM_DO_MOUNT_DEFAULT:
 BM_PRINT_STATUS_WAIT_KEY:
     call BM_PRINT_STATUS
     call KILBUF
-    call CHGET  ;TODO: This displays cursor, somehow hide
-    jp KILBUF
+    call CHGET
+    push af
+    call KILBUF
+    pop af
+    ret
 
 
 ;--- BS key press handler, go to parent directory
@@ -502,6 +508,200 @@ _BM_HELP_LOOP2:
     jp BM_ENTER_MAIN_LOOP
 
 
+;--- Config loop, entered when F2 is pressed
+
+BM_DO_CONFIG:
+    call BM_CLEAR_INFO_AREA
+    ld hl,BM_ZERO_S
+    call BM_PRINT_STATUS
+
+    ld h,1
+    ld l,4
+    call POSIT
+
+    ;* Print the current boot directory
+
+    ld hl,BM_CONFIG_BOOTDIR_S
+    call PRINT
+
+    call BM_GET_BUF_ADD
+    push hl
+    call DSK_GET_BOOTDIR
+    pop hl
+    or a
+    jr z,BM_DO_CONFIG_2
+    cp 1
+    ld hl,BM_ERROR_S
+    jr z,BM_DO_CONFIG_2
+    ld hl,DSK_MAIN_DIR_S
+BM_DO_CONFIG_2:
+    call PRINT
+    call BM_PRINT_CRLF
+
+    ;* Print the name of the default file in current dir
+
+    ld hl,BM_CONFIG_DEFFILE_S
+    call PRINT
+
+    call BM_RESTORE_CURDIR
+
+    call BM_GET_BUF_ADD
+    push hl
+    call DSK_READ_DEFFILE_FILE
+    pop hl
+    or a
+    jr z,BM_DO_CONFIG_3
+    cp 1
+    ld hl,BM_ERROR_S
+    jr z,BM_DO_CONFIG_3
+    ld hl,BM_UNSET_S
+BM_DO_CONFIG_3:
+    push af
+    call PRINT
+    call BM_PRINT_CRLF
+
+    ;* Print the current boot mode
+
+    ld hl,BM_CONFIG_BOOTMODE_S
+    call PRINT
+    call DSK_GET_BOOTMODE
+    add "0"
+    call CHPUT
+
+    call BM_RESTORE_CURDIR
+
+    ;* Print the boot mode change options
+
+    ld hl,BM_CONFIG_TEXT_S
+    call PRINT
+
+    ;* Print "set (currently pointed file) as default" if it's indeed a file
+
+    ;BM_TEMP usage:
+    ;bit 0 set if there's a pointed file that can be set as default
+    ;bit 1 set if there's a default file that can be unset
+    ld (iy+BM_TEMP),0
+
+    ld l,(iy+BM_NUM_FILES)
+    ld h,(iy+BM_NUM_FILES+1)
+    ld a,h
+    or l
+    jr z,BM_DO_CONFIG_4
+
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
+    push hl
+    pop ix
+    ld a,(ix+10)
+    and 80h     ;Is it a directory?
+    jr nz,BM_DO_CONFIG_4
+
+    set 0,(iy+BM_TEMP)
+    ld hl,BM_CONFIG_SET_DEF_S
+    call PRINT
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
+    call BM_PRINT_FILENAME
+
+    ld hl,BM_CONFIG_TEXT_2_S
+    call PRINT
+
+    ;* Print "unset default file" if one is set
+
+BM_DO_CONFIG_4:
+    pop af
+    or a
+    jr nz,BM_DO_CONFIG_ASK
+    set 1,(iy+BM_TEMP)
+    ld hl,BM_CONFIG_UNSET_DEF_S
+    call PRINT
+
+    ;* All info printed, ask user what to do and do it
+
+BM_DO_CONFIG_ASK:
+    ld hl,BM_CONFIG_CHOOSE_S
+    call BM_PRINT_STATUS_WAIT_KEY
+
+    sub "0"
+    or a
+    jr z,BM_DO_CONFIG_RETURN
+
+    cp 5
+    jr c,BM_DO_CONFIG_BOOTMODE
+
+    ;cp 5
+    jr z,BM_DO_SET_BOOTDIR
+
+    cp 6
+    jr z,BM_DO_SET_DEFFILE
+
+    cp 7
+    jr z,BM_DO_UNSET_DEFFILE
+
+    jr BM_DO_CONFIG_ASK ;Invalid action selected: ask again
+
+BM_DO_CONFIG_RETURN:
+    call BM_RESTORE_CURDIR
+    jp BM_ENTER_MAIN_LOOP
+
+BM_DO_CONFIG_BOOTMODE:
+    add "0"
+    call DSK_WRITE_BOOTMODE_FILE
+    jr BM_DO_CONFIG_AFTER_CHANGE
+
+BM_DO_SET_BOOTDIR:
+    call BM_GET_CUR_DIR_ADD
+    call DSK_WRITE_BOOTDIR_FILE
+    jr BM_DO_CONFIG_AFTER_CHANGE
+
+BM_DO_SET_DEFFILE:
+    bit 0,(iy+BM_TEMP)
+    jr z,BM_DO_CONFIG_ASK
+
+    call BM_GET_BUF_ADD
+    push hl
+    ex de,hl
+    ld l,(iy+BM_CUR_FILE_PNT)
+    ld h,(iy+BM_CUR_FILE_PNT+1)
+    call BM_GENERATE_FILENAME
+    pop hl
+    call DSK_WRITE_DEFFILE_FILE
+    jr BM_DO_CONFIG_AFTER_CHANGE
+
+BM_DO_UNSET_DEFFILE:
+    bit 1,(iy+BM_TEMP)
+    jr z,BM_DO_CONFIG_ASK
+
+    call BM_RESTORE_CURDIR
+    ld hl,BM_ZERO_S
+    call DSK_WRITE_DEFFILE_FILE
+    jr BM_DO_CONFIG_AFTER_CHANGE
+
+    ;* After doing an action, show error if needed, then start over
+
+BM_DO_CONFIG_AFTER_CHANGE:
+    or a
+    jp z,BM_DO_CONFIG
+    ld hl,BM_CONFIG_ERROR_APPLYING_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    jp BM_DO_CONFIG
+
+
+;--- Just that... print a CRLF sequence
+
+BM_PRINT_CRLF:
+    ld hl,CRLF_S
+    jp PRINT
+
+
+;--- Set again the directory in CURDIR
+
+BM_RESTORE_CURDIR:
+    call BM_GET_CUR_DIR_ADD
+    ld a,1
+    jp DSK_CHANGE_DIR 
+
+
 ;--- Update currently pointed file on cursor press
 ;    Input: A = pressed cursor key
 
@@ -556,8 +756,8 @@ _BM_UPDATE_CUR_COL_GO:
     pop hl
     ld bc,BM_CUR_COL
     add hl,bc
-    ld (iy+BM_BUF),l
-    ld (iy+BM_BUF+1),h
+    ld (iy+BM_TEMP),l
+    ld (iy+BM_TEMP+1),h
     jr _BM_UPDATE_CUR_ROWCOL_GO
 
 _BM_UPDATE_CUR_ROW_GO:
@@ -566,8 +766,8 @@ _BM_UPDATE_CUR_ROW_GO:
     pop hl
     ld bc,BM_CUR_ROW
     add hl,bc
-    ld (iy+BM_BUF),l
-    ld (iy+BM_BUF+1),h
+    ld (iy+BM_TEMP),l
+    ld (iy+BM_TEMP+1),h
 
 _BM_UPDATE_CUR_ROWCOL_GO:
     call BM_UPDATE_CUR_FILE_PNT
@@ -578,8 +778,8 @@ _BM_UPDATE_CUR_ROWCOL_GO:
     jr nz,_BM_UPDATE_CUR_ROWCOL_GO_2
     ;We ended up pointing past the end of the list,
     ;so reset column/row to 0
-    ld l,(iy+BM_BUF)
-    ld h,(iy+BM_BUF+1)
+    ld l,(iy+BM_TEMP)
+    ld h,(iy+BM_TEMP+1)
     ld (hl),0
     call BM_UPDATE_CUR_FILE_PNT
 
@@ -1148,6 +1348,14 @@ BM_F1_IS_PRESSED:
     jp BM_KEY_CHECK
 
 
+;--- Check if F2 is pressed
+;    Output: Z if pressed, NZ if not
+
+BM_F2_IS_PRESSED:
+    ld de,4006h
+    jp BM_KEY_CHECK
+
+
 ;--- Check if F5 is pressed
 ;    Output: Z if pressed, NZ if not
 
@@ -1506,7 +1714,7 @@ _BM_MAIN_GETDIR_ERR
 ;--- Strings
 
 BM_F1_HELP:
-    db "F1 = Help",0
+    db "F1 = Help, F2 = Config",0
 
 BM_F1_NEXT:
     db "F1 = Next",0
@@ -1605,20 +1813,57 @@ BM_HELP_2:
     db " and when CAPS blinks press the key."
     db 0
 
+BM_CONFIG_BOOTDIR_S:
+    db "Boot dir: /",0
+BM_CONFIG_DEFFILE_S:
+    db "Default file in this dir: ",0
+BM_CONFIG_BOOTMODE_S:
+    db "Boot mode: ",0
+BM_CONFIG_TEXT_S:
+    db 13,10
+    db 13,10
+    db "Change boot mode:",13,10
+    db "  1: Show menu",13,10
+    db "  2: Don't show menu, don't mount",13,10
+    db "  3: Mount default file in boot dir",13,10
+    db "  4: Mount last mounted file",13,10
+    db 13,10
+    db "5: Set current dir as boot dir",13,10
+    db 13,10
+    db 0
+BM_CONFIG_SET_DEF_S:
+    db "6: Set ",0
+BM_CONFIG_TEXT_2_S:
+    db " as default file",13,10
+    db "   in this dir",13,10
+    db 13,10
+    db 0
+BM_CONFIG_UNSET_DEF_S:
+    db "7: Unset explicit default file",13,10
+    db "   in this dir",0
+BM_CONFIG_CHOOSE_S:
+    db "Choose an option, or 0 to exit: ",0
+
+BM_CONFIG_ERROR_APPLYING_S:
+    db "Error applying change - Press key ",0
+
+BM_ERROR_S: db "(error)",0
+
+BM_UNSET_S: db "(not set)"
+
+BM_ZERO_S: db 0
+
 
 ; -----------------------------------------------------------------------------
 ; Variables
 ; -----------------------------------------------------------------------------
-
-_BM_VARS_BASE: equ 0C800h
 
 BM_VARS_START: equ 0
 
 BM_NUM_PAGES: equ BM_VARS_START
 BM_CUR_PAGE:  equ BM_NUM_PAGES+1
 BM_NUM_FILES: equ BM_CUR_PAGE+1
-BM_BUF: equ BM_NUM_FILES+2
-BM_CUR_PAGE_PNT: equ BM_BUF+13   ;Pointer to 1st filename in current page
+BM_CUR_PAGE_PNT: equ BM_NUM_FILES+2   ;Pointer to 1st filename in current page
 BM_CUR_FILE_PNT: equ BM_CUR_PAGE_PNT+2   ;Pointer to current filename
 BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
 BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
@@ -1631,7 +1876,9 @@ BM_MAX_FILES_TO_ENUM: equ BM_CUR_DIR_LENGTH+1
 BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2
 BM_LINLEN_BAK: equ BM_SCRMOD_BAK+1
 BM_FNK_BAK: equ BM_LINLEN_BAK+1
-BM_INITIAL_DIR: equ BM_FNK_BAK+1
+BM_TEMP: equ BM_FNK_BAK+1
+BM_INITIAL_DIR: equ BM_TEMP+2
+BM_BUF: equ BM_INITIAL_DIR+64
 
-BM_VARS_END: equ BM_FNK_BAK+1
+BM_VARS_END: equ BM_BUF+64
 BM_VARS_LEN: equ BM_VARS_END-BM_VARS_START

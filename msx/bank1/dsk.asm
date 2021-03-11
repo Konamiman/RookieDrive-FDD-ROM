@@ -214,6 +214,74 @@ DSK_WRITE_CURDIR_FILE:
 
 
 ; -----------------------------------------------------------------------------
+; DSK_WRITE_BOOTDIR_FILE: Write BOOTDIR config file in main directory
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of content to write, zero-terminated
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_WRITE_BOOTDIR_FILE:
+    push hl
+    call BM_STRLEN
+    pop de
+    ld hl,DSK_BOOTDIR_S
+    jp DSK_WRITE_MAIN_CONFIG_FILE
+
+
+; -----------------------------------------------------------------------------
+; DSK_WRITE_BOOTMODE_FILE: Write BOOTMODE config file in main directory
+; -----------------------------------------------------------------------------
+; Input:  A  = Value to write
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_WRITE_BOOTMODE_FILE:
+    push af
+    ld hl,1
+    add hl,sp
+    ex de,hl
+    ld b,1
+    ld hl,DSK_BOOTMODE_S
+    call DSK_WRITE_MAIN_CONFIG_FILE
+    pop hl
+    ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_WRITE_DEFFILE_FILE: Write DEFFILE config file in current directory
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of content to write, zero-terminated
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_WRITE_DEFFILE_FILE:
+    push hl
+    call BM_STRLEN
+    pop de
+    ld hl,DSK_DEFFILE_S
+    jp DSK_WRITE_CONFIG_FILE
+
+
+; -----------------------------------------------------------------------------
+; DSK_READ_DEFFILE_FILE: Read DEFFILE config file from current directory
+; -----------------------------------------------------------------------------
+; Input:  HL = Address where to read the file
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File not found
+
+DSK_READ_DEFFILE_FILE:
+    ex de,hl
+    ld hl,DSK_DEFFILE_S
+    ld b,12
+    call DSK_READ_CONFIG_FILE
+    or a
+    ret nz
+    ld (de),a
+    ret
+    
+
+; -----------------------------------------------------------------------------
 ; DSK_CHANGE_DIR: Change the current directory
 ;                 (doesn't update config files or work area)
 ; -----------------------------------------------------------------------------
