@@ -1775,6 +1775,10 @@ BM_HELP_2:
     db "   exit without mounting",13,10
     db 13,10
     db 13,10
+    db " TAB (while booting):",13,10
+    db "   temporarily force boot mode 1",13,10
+    db 13,10
+    db 13,10
     db " After boot it is possible to switch",13,10
     db " to another disk image file from the",13,10
     db " same directory (up to 36 files).",13,10

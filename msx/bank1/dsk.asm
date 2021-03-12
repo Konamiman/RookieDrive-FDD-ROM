@@ -1174,6 +1174,20 @@ DSK_DO_BOOT_PROC:
 _DSK_DO_BOOT_PROC:
     ld (iy),a
 
+    or a
+    jr nz,_DSK_DO_BOOT_PROC_2
+
+    ;When booting computer:
+    ;If TAB is pressed, force boot mode 1
+
+    ld de,7
+    ld hl,NEWKEY
+    add hl,de
+    ld a,(hl)
+    and 8
+    jr z,_DSK_DO_BOOT_1
+_DSK_DO_BOOT_PROC_2:
+
     call WK_GET_STORAGE_DEV_FLAGS   ;No disk mounted for now
     and 0FEh
     call WK_SET_STORAGE_DEV_FLAGS

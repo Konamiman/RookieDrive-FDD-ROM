@@ -36,8 +36,6 @@ INIHRD_IMPL:
 
 INIENV_IMPL:
 
-    ;TODO: Key to disable mounting the file in boot modes 3 and 4
-
     if WAIT_KEY_ON_INIT = 1
     ld hl,INIHRD_NEXT
     push hl
