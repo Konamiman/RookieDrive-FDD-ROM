@@ -154,6 +154,7 @@ OEM_S_NOERRDATA:
     ;    Open the USB menu if there's a storage device inserted
 
 OEMC_USBMENU:
+    ld a,1
     ld ix,DO_BOOT_MENU
     ld iy,ROM_BANK_1
     call CALL_BANK

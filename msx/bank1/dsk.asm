@@ -1202,7 +1202,7 @@ _DSK_DO_BOOT_1:
     or a
     ret nz
 
-    ld a,1
+    xor a
     jp DO_BOOT_MENU
 
 

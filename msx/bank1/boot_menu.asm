@@ -7,20 +7,14 @@
 
 BM_MAX_DIR_NAME_LENGTH: equ 64
 
-;TODO: Remove input parameter in A
-
 ; -----------------------------------------------------------------------------
 ; Boot menu entry point
 ; 
 ; The starting point is CURDIR, or if it isn't set, the main directory.
 ;
-; Input:  A  = What should the initial directory be:
-;              0: The main directory
-;              1: The current directory
-;              The initial directory is to be set:
-;              - When the menu starts
-;              - When F5 is pressed
-;              - When exiting without mounting
+; Input:  A  = Where is this called from:
+;              0: Computer boot
+;              1: CALL USBMENU/SUBRESET
 ; Output: A = 0 if a file was actually mounted
 ;             1 if ESC or CTRL+STOP was pressed
 ;             2 if not enough memory to start the menu
@@ -71,7 +65,7 @@ DO_BOOT_MENU:
 
     ld (iy+BM_MAX_FILES_TO_ENUM),c
     ld (iy+BM_MAX_FILES_TO_ENUM+1),b
-    ld (iy+BM_INITIAL_DIR),d
+    ld (iy+BM_WHERE_CALLED_FROM),d
 
     call BM_SCREEN_BAK
     ld a,40
@@ -85,7 +79,7 @@ DO_BOOT_MENU:
     call BM_SCREEN_REST
     call KILBUF
 
-    ld a,(iy+BM_INITIAL_DIR)
+    ld a,(iy+BM_WHERE_CALLED_FROM)
     or a
     jr z,_BM_NO_REMOUNT
     pop af
@@ -1663,33 +1657,10 @@ _BM_CALC_DIR_LEVEL_END:
 BM_OPEN_INITIAL_DIR:
     if USE_FAKE_STORAGE_DEVICE = 0
 
-    ld a,(iy+BM_INITIAL_DIR)
-    or a
-    jr nz,_BM_OPEN_INITIAL_CURDIR
-
-_BM_OPEN_INITIAL_MAIN:
-    call DSK_CHANGE_BOOTDIR
-    or a
-    jr nz,_BM_MAIN_GETDIR_ERR
-    ld hl,DSK_MAIN_DIR_S
-    jr c,_BM_OPEN_INITIAL_MAIN_2
-    ld hl,DSK_ROOT_DIR_S
-_BM_OPEN_INITIAL_MAIN_2:
-    push hl
-    call BM_GET_CUR_DIR_ADD
-    ex de,hl
-    pop hl
-    ld bc,BM_MAX_DIR_NAME_LENGTH+1
-    ldir
-    jr _BM_OPEN_INITIAL_MAIN_OK
-
-_BM_OPEN_INITIAL_CURDIR:
     call BM_GET_CUR_DIR_ADD
     call DSK_GET_CURDIR
     or a
     jr nz,_BM_MAIN_GETDIR_ERR
-
-_BM_OPEN_INITIAL_MAIN_OK:
     call BM_ADJUST_DIR_VARS
     xor a
     ret
@@ -1877,8 +1848,8 @@ BM_SCRMOD_BAK: equ BM_MAX_FILES_TO_ENUM+2
 BM_LINLEN_BAK: equ BM_SCRMOD_BAK+1
 BM_FNK_BAK: equ BM_LINLEN_BAK+1
 BM_TEMP: equ BM_FNK_BAK+1
-BM_INITIAL_DIR: equ BM_TEMP+2
-BM_BUF: equ BM_INITIAL_DIR+64
+BM_WHERE_CALLED_FROM: equ BM_TEMP+2
+BM_BUF: equ BM_WHERE_CALLED_FROM+1
 
 BM_VARS_END: equ BM_BUF+64
 BM_VARS_LEN: equ BM_VARS_END-BM_VARS_START
