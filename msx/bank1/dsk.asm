@@ -56,6 +56,9 @@ DSK_ZERO_S:
 
 ; -----------------------------------------------------------------------------
 ; DSK_READ_CONFIG_FILE: Read config file in current directory
+;
+; The file is read until B bytes have been read, the end of the file
+; is reached, or a CR or LF character is found, whatever happens firts
 ; -----------------------------------------------------------------------------
 ; Input:  HL = File name
 ;         DE = Destination address
@@ -67,7 +70,6 @@ DSK_ZERO_S:
 ;         DE = Pointer after last byte read
 
 DSK_READ_CONFIG_FILE:
-    ;TODO: Allow CR or LF as file terminator
     push hl
     push de
     push bc
@@ -92,11 +94,35 @@ DSK_READ_CONFIG_FILE:
     ex de,hl
     ld c,b
     ld b,0
+    push hl
     call HWF_READ_FILE
     ex de,hl
+    pop hl
     ld b,0
     or a
     ret nz
+
+    ;Search for CR or LF
+
+    ld a,c
+    or a
+    jr z,_DSK_READ_CONFIG_FILE_END
+
+    ld b,c
+    ld c,0
+_DSK_READ_CONFIG_FILE_LOOP:
+    ld a,(hl)
+    cp 13
+    jr z,_DSK_READ_CONFIG_FILE_END
+    cp 10
+    jr z,_DSK_READ_CONFIG_FILE_END
+    inc hl
+    inc c
+    djnz _DSK_READ_CONFIG_FILE_LOOP
+
+_DSK_READ_CONFIG_FILE_END:
+    ex de,hl
+    xor a
     ld b,c
     ret
 
