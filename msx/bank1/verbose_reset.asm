@@ -10,11 +10,11 @@
 
 VERBOSE_RESET:
     push iy
-    ld iy,-1
+    ld iy,-1-36
     add iy,sp
     ld sp,iy
     call _VERBOSE_RESET
-    ld iy,1
+    ld iy,1+36
     add iy,sp
     ld sp,iy
     pop iy
@@ -27,14 +27,16 @@ _VERBOSE_RESET:
     ld hl,NOHARD_S
     jp c,PRINT
 
-    ;TODO: Use stack instead
-    ld hl,0C000h
+    push iy
+    pop hl
+    inc hl
+    push hl
     call HWF_MOUNT_DISK
     jr c,_HW_RESET_NO_STOR
 
     ld hl,STOR_FOUND_S
     call PRINT
-    ld hl,0C000h
+    pop hl
     ld b,0
     ;Print the device name, collapsing multiple spaces to a single one
 _HW_RESET_PRINT:
