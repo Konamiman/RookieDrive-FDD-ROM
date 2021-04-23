@@ -6,7 +6,8 @@
 ; It is executed at boot time and by CALL USBRESET.
 ;
 ; Inpuy: A = 0: Called from computer boot
-;            1: Called from CALL USBRESET
+;               (on boot mode 1 jump to boot menu)
+;            1: Called from CALL USBRESET (always return)
 
 VERBOSE_RESET:
     push iy

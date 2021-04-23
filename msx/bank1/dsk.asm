@@ -1183,7 +1183,8 @@ DSK_BOOTMODE_S:
 ; DSK_DO_BOOT_PROC: Do the boot procedure
 ; -----------------------------------------------------------------------------
 ; Output: A  = 0: Do the computer boot procedure
-;              1: Do the device change boot procedure
+;                 (on boot mode 1 jump to boot menu)
+;              1: Do the device change boot procedure (always return)
 
 DSK_DO_BOOT_PROC:
     push iy

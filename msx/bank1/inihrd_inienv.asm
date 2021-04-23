@@ -44,12 +44,13 @@ INIENV_IMPL:
     xor a
     call WK_SET_LAST_REL_DRIVE
 
-    xor a
+    ld a,1
     call VERBOSE_RESET
     ld b,30
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
+    jp DO_BOOT_MENU
 
     ret
 

@@ -861,6 +861,46 @@ Num2:
 
     endif
 
+    push iy
+    ld iy,0
+    call _HWF_ENUM_FILES_CORE
+    pop iy
+    ret
+
+
+; -----------------------------------------------------------------------------
+; HWF_FIND_NTH_FILE: Find the Nth file in the current directory
+;
+; Files whose first character is not a letter or a digit will be skipped.
+;
+; The name of the files will be put at the specified address,
+; sequentially and with no separators, as a fixed 11 bytes string in the
+; same format as in the directory entry (e.g. "FILE    EXT").
+; -----------------------------------------------------------------------------
+; Input:  HL = Address of buffer to get file info into
+;         A  = Index of file to find (first is 0)
+; Output: A  = 0: Ok
+;              1: Generic error
+;              2: File not found
+;         HL = Pointer after the filename
+
+HWF_FIND_NTH_FILE:
+    push iy
+    ld iy,1
+    ld c,a
+    ld b,0
+    inc bc
+    call _HWF_ENUM_FILES_CORE
+    pop iy
+    or a
+    ret z
+    cp USB_ERR_MISS_FILE
+    ld a,2
+    ret z
+    dec a
+    ret
+
+_HWF_ENUM_FILES_CORE:
     if USE_FAKE_STORAGE_DEVICE = 0
 
     ld a,CH_CMD_SET_FILE_NAME
@@ -898,21 +938,26 @@ _HWF_ENUM_FILES_LOOP:
 
     push bc
     ld bc,11
-    add hl,bc
+    add hl,bc ;Point to file attributes byte
     pop bc
 
-    ld a,(hl)   ;File attributes byte
-    bit 1,a     ;"Hidden" attribute set?
-    jr z,_HWF_ENUM_NO_HIDDEN
+    bit 1,(hl)  ;"Hidden" attribute set?
+    jr nz,_HWF_ENUM_SKIP
+    ld a,iyl
+    or a
+    jr z,_HWF_ENUM_USE
+    bit 4,(hl)  ;"Directory" attribute set?
+    jr z,_HWF_ENUM_DIR_OK
 
+_HWF_ENUM_SKIP:
     push bc
     ld bc,-11
     add hl,bc
     pop bc
     jr _HWF_ENUM_DIR_NEXT
 
-_HWF_ENUM_NO_HIDDEN:
-    and 10h
+_HWF_ENUM_USE:
+    bit 4,(hl)  ;"Directory" attribute set?
     jr z,_HWF_ENUM_DIR_OK
     dec hl
     set 7,(hl)
@@ -926,13 +971,23 @@ _HWF_ENUM_DIR_OK:
     or c
     jr z,_HWF_ENUM_FILES_END
 
+    ld a,iyl
+    or a
+    jr nz,_HWF_ENUM_SKIP
+
 _HWF_ENUM_DIR_NEXT:
     ld a,CH_CMD_FILE_ENUM_GO
     out (CH_COMMAND_PORT),a
     jp _HWF_ENUM_FILES_LOOP
 
 _HWF_ENUM_FILES_END:
+    push af
+    ld a,iyl
+    or a
+    jr nz,_HWF_ENUM_FILES_END_2
     ld (hl),0
+_HWF_ENUM_FILES_END_2:
+    pop af    
     push de
     pop bc
     ret
