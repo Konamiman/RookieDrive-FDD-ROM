@@ -295,3 +295,342 @@ Div16_NoAdd2:
     ld b,c
     ld c,a
     ret
+
+
+; -----------------------------------------------------------------------------
+; SCANKEYS: Scan all the numeric and alphabetic keys,
+;           including the numeric keyboard.
+; -----------------------------------------------------------------------------
+; Input: 	A = 0 for international keyboard, 1 for Russian keyboard
+; Output:   Keys in HLDEB (1 bit each, set if pressed):
+;           B: 76543210
+;           E: FEDCBA98
+;           D: NMLKJIHG
+;           L: VUTSRQPO
+;           H: ....ZYXW
+;
+;           H holds also the status of CAPS, GRAPH, CTRL and SHIFT
+;           on bits 7,6,5,4 respectively.
+; Mofifies: AF, C
+; -----------------------------------------------------------------------------
+
+SK_ROW_0: equ 0
+SK_ROW_1: equ 1
+SK_ROW_2: equ 2
+SK_ROW_3: equ 3
+SK_ROW_4: equ 4
+SK_ROW_5: equ 5
+SK_ROW_6: equ 6
+SK_ROW_9: equ 7
+SK_ROW_10: equ 8
+SK_B: equ 9
+SK_E: equ 10
+SK_D: equ 11
+SK_L: equ 12
+SK_H: equ 13
+
+SK_SIZE: equ 14
+
+SCANKEYS:
+    push iy
+    ld iy,-SK_SIZE
+    add iy,sp
+    ld sp,iy
+
+    push af
+    ld bc,0700h
+    push iy
+    pop hl
+    call SK_GET_ROWS
+
+    ld bc,0209h
+    call SK_GET_ROWS
+
+    pop af
+    or a
+    jr nz,SCANK_RUSSIAN
+    call SK_INTERNATIONAL
+    jr SCANK_DONE
+SCANK_RUSSIAN:
+    call SK_RUSSIAN
+SCANK_DONE:
+
+    ld b,(iy+SK_B)
+    ld e,(iy+SK_E)
+    ld d,(iy+SK_D)
+    ld l,(iy+SK_L)
+    ld h,(iy+SK_H)
+
+    ld iy,SK_SIZE
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+
+    ;* International keyboard layout version
+
+;0: 76543210
+;1: ......98
+;2: BA......
+;3: JIHGFEDC
+;4: RQPONMLK 
+;5: ZYXWVUTS
+;6: .... CAPS GRAPH CTRL SHIFT
+;Numeric:
+;9:  43210...
+;10: ...98765
+
+SK_INTERNATIONAL:
+
+    ;* 0-7
+
+    ld a,(iy+SK_ROW_0)    ;76543210
+    ld (iy+SK_B),a
+
+    ;* 8-F
+
+    ld a,(iy+SK_ROW_1)
+    and 00000011b
+    ld b,a              ;......89
+
+    ld a,(iy+SK_ROW_2)  ;BA......
+    rrca
+    rrca
+    rrca
+    rrca
+    and 00001100b       ;....BA..
+    or b
+    ld b,a              ;....BA89
+
+    ld a,(iy+SK_ROW_3)
+    rlca
+    rlca
+    rlca
+    rlca
+    ld c,a              ;FEDCJIHG
+    and 11110000b       ;FEDC....
+    or b                ;FEDCBA89
+
+    ld (iy+SK_E),a
+
+    ;* G-N
+
+    ld a,c
+    and 00001111b       ;....JIHG
+    ld b,a
+
+    ld a,(iy+SK_ROW_4)
+    rlca
+    rlca
+    rlca
+    rlca
+    ld c,a              ;NMLKRQPO
+    and 11110000b       ;NMLK....
+    or b                ;NMLKJIHG
+
+    ld (iy+SK_D),a
+
+    ;* O-V
+
+    ld a,c
+    and 00001111b       ;....RQPO
+    ld b,a
+
+    ld a,(iy+SK_ROW_5)
+    rlca
+    rlca
+    rlca
+    rlca
+    ld c,a              ;VUTSZYXW
+    and 11110000b       ;VUTS....
+    or b                ;VUTSRQPO
+
+    ld (iy+SK_L),a
+
+    ;* W-Z 
+
+    ld a,c
+    and 00001111b       ;....ZYXW
+    ld (iy+SK_H),a
+    ld h,a
+
+SK_COMMON:
+    ;Input: H = (SK_H)
+
+    ;* CAPS-GRAPH-CTRL-SHIFT
+
+    ld a,(iy+SK_ROW_6)
+    rlca
+    rlca
+    rlca
+    rlca
+    and 11110000b       ;CAPS-GRAPH-CTRL-SHIFT-ZYXW
+    or  h
+
+    ld (iy+SK_H),a
+
+    ;* Numeric keyboard
+
+    ld a,(iy+SK_ROW_9)     ;43210... from numeric keyboard
+    rrca
+    rrca
+    rrca
+    and 00011111b
+    ld b,a                 ;...43210 from numeric keyboard
+
+    ld a,(iy+SK_ROW_10)    ;...98765 from numeric keyboard
+    rlca
+    rlca
+    rlca
+    rlca
+    rlca
+    ld c,a              ;C = 765...98, we'll use it later
+    and 11100000b       ;765..... from numeric keyboard
+    or b                ;76543210 from numeric keyboard
+
+    or (iy+SK_B)    ;76543210 from either the regular or the numeric keyboard
+    ld (iy+SK_B),a
+
+    ld a,c
+    and 00000011b       ;......98 from numeric keyboard
+    or (iy+SK_E)        
+    ld (iy+SK_E),a      ;FEDCBA98, with 98 from either the regular or the numeric keyboard 
+
+    ret
+
+
+    ;* Russian keyboard layout version
+
+;0: 654321.9
+;1: V.H..087
+;2: IF...B..
+;3: O.RPAUWS
+;4: KJZ.TXDL 
+;5: QN.CMGEY
+;6: .... CAPS GRAPH CTRL SHIFT
+;Numeric:
+;9:  43210...
+;10: ...98765
+
+SK_RUSSIAN:
+    ld a,(iy+SK_ROW_0)
+    ld c,a
+    ld b,(iy+SK_ROW_1)
+    ld e,0
+
+    and 11111100b   ;654321..
+
+    srl b   ;Cy = 7
+    rra     ;7654321.
+    srl a   ;.7654321
+
+    srl c   ;Cy = 9
+    rl e    ;E = .......9
+
+    srl b   ;Cy = 8
+    rl e    ;E = ......98
+
+    srl b   ;Cy = 0
+    rl a    ;76543210
+
+    ld (iy+SK_B),a
+    ld (iy+SK_E),e
+
+    ;I'm sorry but that's it, only 9 disk image files supported in Russian keyboards.
+    ;Pull request implementing the (hellish) conversion of the rest of the keys will be welcome.
+
+    xor a
+    ld (iy+SK_D),a
+    ld (iy+SK_L),a
+    ld (iy+SK_H),a
+
+    ld h,a
+    jp SK_COMMON
+
+
+    ;Input:  HL = First work area address, B=Rows count, C=First row
+    ;Output: HL = Last work area address used + 1
+SK_GET_ROWS:
+    ld a,c
+    push bc
+    call DO_SNSMAT
+    pop bc
+    cpl
+    ld (hl),a
+    inc hl
+    inc c
+    djnz SK_GET_ROWS
+    ret
+
+
+    ;Returns A=1 if we have a Russian keyboard, A=0 otherwise
+CHECK_IS_RUSSIAN: ; in case of ZF
+    DI
+    CALL KILBUF
+    LD HL,(CAPST)
+    LD A,(CLIKSW)
+    PUSH AF
+    PUSH HL
+    XOR A
+    LD (KANAST),A   ; KANA OFF
+    LD (CLIKSW),A   ; Shut up!
+    DEC A
+    LD (CAPST),A    ; CAPS ON
+    LD (NEWKEY+6),A ; No SHIFT, CTRL etc.
+    LD A,64
+    LD B,7
+    CALL 0D89H
+    POP HL
+    POP AF
+    LD (CLIKSW),A
+    LD (CAPST),HL
+    CALL CHGET
+    CP "J"
+    ld a,1
+    RET z
+    dec a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; WAIT_KEY_RELEASE: Wait until none of the numeric and alphabetic keys
+;                   or CAPS, GRAPH, CTRL, SHIFT is pressed.
+; -----------------------------------------------------------------------------
+
+WAIT_KEY_RELEASE:
+    call GETCURKEY
+    or  a
+    jr  nz,WAIT_KEY_RELEASE
+    ret
+
+
+; -----------------------------------------------------------------------------
+; CAPSON and CAPSOFF: Turn the CAPS led on or off.
+; Modifies: AF
+; -----------------------------------------------------------------------------
+
+CAPSON:
+    in  a,(0AAh)
+    and 10111111b
+    out (0AAh),a
+    ret
+
+CAPSOFF:
+    push af
+    in a,(0AAh)
+    or 01000000b
+    out (0AAh),a
+    pop af
+    ret
+
+
+; -----------------------------------------------------------------------------
+; MYKILBUF: Empty yhe keyboard buffer (copy of BIOS routine KILBUF)
+; Modifies: HL
+; -----------------------------------------------------------------------------
+
+MYKILBUF:
+    ld hl,(PUTPNT)
+    ld (GETPNT),hl
+    ret

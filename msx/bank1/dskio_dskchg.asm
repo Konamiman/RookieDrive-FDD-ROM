@@ -332,6 +332,8 @@ CALL_XFER:
     ;=== DSKIO for storage devices (mounted file) ===
 
 _DSKIO_IMPL_STDEV:
+    call MAYBE_CHANGE_DSK
+
     push hl
     push bc
 
@@ -551,6 +553,132 @@ CHECK_XFER_IS_NEEDED:
     ret
 
 
+    ;=== Handle possible disk image file change ===
+
+MAYBE_CHANGE_DSK:
+    push af
+	push	hl
+	push	de
+	push	bc
+	push	ix
+	push	iy
+    ld iy,-65
+    add iy,sp
+    ld sp,iy
+	call	_MAYBE_CHANGE_DSK
+    ld iy,65
+    add iy,sp
+    ld sp,iy
+	pop	iy
+	pop	ix
+	pop	bc
+	pop	de
+	pop	hl
+    pop af
+	ret
+
+_MAYBE_CHANGE_DSK:
+    push iy
+    call GETCURKEY
+    pop iy
+    or a
+    ret z
+    cp 0FFh
+    jr nz,CHGF3
+
+    call WAIT_KEY_RELEASE ;GRAPH pressed: wait for other keys to release...
+
+CHGWA2:
+    call CAPSON
+CHGWA22:
+    push iy
+	call	GETCURKEY	;...then to be pressed again.
+    pop iy
+	or	a
+	jr	z,CHGWA22
+
+    cp 0FFh      ;User changed his mind and pressed GRAPH 
+    jr nz,CHGF3
+
+    call WAIT_KEY_RELEASE
+    call CAPSOFF
+    ret
+
+CHGF3:
+	ld	c,a
+	call	CAPSOFF
+
+    ;--- The key with index C is pressed
+
+    push bc
+    push iy
+    pop hl
+    call DSK_GET_CURDIR
+    pop bc
+
+    ld a,c
+    dec a
+    push iy
+    pop hl
+    push hl
+    call HWF_FIND_NTH_FILE
+    pop hl
+    or a
+    jr nz,CHGWA2
+
+    ld de,12
+    add hl,de
+    ex de,hl
+    push iy
+    pop hl
+    push de
+    call BM_GENERATE_FILENAME
+    pop hl
+
+    xor a
+    call DSK_MOUNT
+    or a
+    jr nz,CHGWA2
+
+CHGF_END:
+    call WAIT_KEY_RELEASE
+    call MYKILBUF
+    call CAPSOFF
+    ret
+
+
+	;--- Return in A the index of currently pressed key, 0 if none, FFh if GRAPH
+
+GETCURKEY:
+    xor a ;TODO: For now don't support russian keyboard
+    call SCANKEYS
+    bit 6,h
+    ld a,0FFh
+    ret nz
+    ld c,b
+	ld b,36
+    ld a,1
+
+    ;HLDEC = key statuses
+    ;B = Keys left to check
+    ;A = Current key index
+    ;We do an initial rotation because we want to start at key 1.
+CHGLOOP:
+    sra c
+    rr e
+    rr d
+    rr l
+    rr h
+    bit 0,c
+    ret nz
+
+    inc a
+    djnz CHGLOOP
+
+    xor a
+    ret
+
+
 ; -----------------------------------------------------------------------------
 ; DSKCHG
 ; -----------------------------------------------------------------------------
@@ -609,6 +737,8 @@ _DSKCHG_IMPL_STDEV:
     and 81h
     cp 80h
     jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
+
+    call MAYBE_CHANGE_DSK
 
     pop af
     

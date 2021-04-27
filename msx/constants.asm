@@ -19,10 +19,15 @@ LINL32: equ 0F3AFh
 LINLEN: equ 0F3B0h
 CRTCNT: equ 0F3B1h
 TXTCGP: equ 0F3B7h ;Address of pattern generator table in VRAM
+CLIKSW: equ 0F3DBh
 CNSDFG: equ 0F3DEh
+PUTPNT: equ 0F3F8h
+GETPNT: equ 0F3FAh
 STREND: equ 0F6C6h ;End of memory used by BASIC
 OLDKEY: equ 0FBDAh
 NEWKEY: equ 0FBE5h
+CAPST:  equ	0FCABh
+KANAST: equ 0FCACh
 SCRMOD: equ 0FCAFh
 
 ;Keyboard matrix:
