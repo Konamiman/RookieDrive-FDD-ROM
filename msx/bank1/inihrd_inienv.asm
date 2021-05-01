@@ -50,7 +50,8 @@ INIENV_IMPL:
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
-    jp DO_BOOT_MENU
+    xor a
+    jp DSK_DO_BOOT_PROC
 
     ret
 

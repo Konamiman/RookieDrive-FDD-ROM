@@ -1294,3 +1294,24 @@ _DSK_DO_BOOT_4:
     or a
     ret z
     jr _DSK_DO_BOOT_3
+
+
+; -----------------------------------------------------------------------------
+; DSK_READ_CURDIR_FILE: Read the CURDIR config file in main directory
+; -----------------------------------------------------------------------------
+; Input:  DE = Destination address
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File not found
+;         B  = Amount of bytes read if no error, 0 on error
+;         DE = Pointer to the zero terminator
+
+DSK_READ_CURDIR_FILE:
+    ld hl,DSK_CURDIR_S
+    ld b,64
+    call DSK_READ_MAIN_CONFIG_FILE
+    push af
+    xor a
+    ld (de),a
+    pop af
+    ret
