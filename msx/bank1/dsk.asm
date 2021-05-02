@@ -446,11 +446,15 @@ _DSK_CHANGE_DIR_U_LENGTH_OK_2:
     push iy
     pop hl
     inc hl  ;Skip length
-    ld e,(iy)
+    ld a,(iy)
+    ld e,a
     ld d,0
+    or a
+    jr z,_DSK_CHANGE_DIR_U_APPEND_OK ;It's root dir
     add hl,de
     ld (hl),'/'
     inc hl
+_DSK_CHANGE_DIR_U_APPEND_OK: 
     ex de,hl
 
     pop hl
