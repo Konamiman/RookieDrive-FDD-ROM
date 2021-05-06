@@ -75,6 +75,8 @@ OEM_COMMANDS:
     dw OEMC_USBMENU
     db "USBCD",0
     dw OEMC_USBCD
+    db "USBMOUNT",0
+    dw OEMC_USBMOUNT
     db 0
 
 
@@ -152,25 +154,256 @@ OEM_S_NOERRDATA:
     db  "No error data recorded",0
     
 
+; -----------------------------------------------------------------------------
+; Make sure that a storage device is connected, throw an error if not.
+
+OEMC_ENSURE_STORAGE_DEVICE:
+    push ix
+    push hl
+    ld ix,USB_CHECK_DEV_CHANGE
+    call OEM_CALL_BANK_1
+    ld ix,WK_GET_STORAGE_DEV_FLAGS
+    call OEM_CALL_BANK_1
+    pop hl
+    pop ix
+    jp z,THROW_ILLEGAL_FN_CALL
+    ret
+
+
     ;--- CALL USBMENU
     ;    Open the USB menu if there's a storage device inserted
 
 OEMC_USBMENU:
+    call OEMC_ENSURE_STORAGE_DEVICE
+
     ld a,1
     ld ix,DO_BOOT_MENU
     call OEM_CALL_BANK_1
     cp 3
-    ld hl,OEM_S_NO_STDEV
-    jp z,OEM_PRINT_AND_END
+    jp z,THROW_ILLEGAL_FN_CALL
     cp 2
-    ld hl,OEM_S_NO_MEM
-    jp z,OEM_PRINT_AND_END
+    jp z,THROW_OUT_OF_MEMORY
     jp OEM_END
 
-OEM_S_NO_STDEV:
-    db "No USB storage device present",7,0
-OEM_S_NO_MEM:
-    db "Not enough memory",7,0
+
+    ;--- CALL USBMOUNT - Show file currently mounted
+    ;    CALL USBMOUNT(-1) - Unmount file
+    ;    CALL USBMOUNT(0) - Mount default file in current dir
+    ;    CALL USBMOUNT(n) - Mount nth file in current dir
+    ;    CALL USBMOUNT("file.ext") - Mount specified file in current dir
+
+OEMC_USBMOUNT:
+    call OEMC_ENSURE_STORAGE_DEVICE
+
+    pop hl
+
+    push iy
+    ld iy,-65
+    add iy,sp
+    ld sp,iy
+    call _OEMC_USBMOUNT
+    ld iy,65
+    add iy,sp
+    ld sp,iy
+    pop iy
+
+    or a
+    ret
+
+_OEMC_USBMOUNT:
+    dec hl
+    ld ix,CHRGTR
+    call OEM_CALBAS
+    jp z,_OEMC_USBMOUNT_PRINT
+
+    cp '('
+    jp nz,THROW_SYNTAX_ERROR
+    inc hl
+    push hl ;Save BASIC text pointer in case we need to reevaluate expression
+    ld ix,FRMEVL
+    call OEM_CALBAS
+    dec hl
+    ld ix,CHRGTR
+    call OEM_CALBAS
+    cp ')'
+    jp nz,THROW_SYNTAX_ERROR
+
+    ld a,(VALTYP)
+    cp 3
+    jr z,_OEMC_USBMOUNT_BYNAME
+    ex (sp),hl  ;Restore saved BASIC text pointer and at the same time save the current pointer
+    ld ix,FRMQNT
+    call OEM_CALBAS
+    pop hl ;Restore the current pointer
+    jr _OEMC_USBMOUNT_NUM
+
+    ;--- Mount a file by name
+
+_OEMC_USBMOUNT_BYNAME:
+    pop bc  ;Discard saved BASIC text pointer
+    push hl
+    ld ix,FRESTR
+    call OEM_CALBAS
+    ex de,hl
+    pop hl
+
+    ;Here DE = Pointer to string descriptor
+
+    push hl ;Save BASIC text pointer
+    ex de,hl
+
+    ld a,(hl)
+    or a
+    jp z,THROW_ILLEGAL_FN_CALL
+    cp 12+1
+    jp nc,THROW_STRING_TOO_LONG
+
+    ld b,0
+    ld c,a  ;BC = Length of string
+    inc hl
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a  ;HL = Pointer to string
+
+    push iy
+    pop de
+    ldir
+    xor a
+    ld (de),a   ;IY contains now the zero-terminated string
+
+_OEMC_USBMOUNT_BYNAME_GO:
+    push iy
+    pop hl
+    call OEM_TOUPPER
+    xor a
+    ld ix,DSK_MOUNT
+    call OEM_CALL_BANK_1
+    or a
+    jp z,_OEM_USBMOUNT_END
+
+    push af
+    ld ix,DSK_REMOUNT
+    call OEM_CALL_BANK_1
+    pop af
+    dec a
+    dec a
+    jp z,THROW_FILE_NOT_FOUND
+    dec a
+    jp z,THROW_FILE_EXISTS
+    jp THROW_DISK_ERROR
+
+_OEMC_USBMOUNT_NUM:
+    bit 7,d
+    jr nz,_OEMC_USBMOUNT_UNMOUNT
+
+    ld a,d
+    or a
+    jp nz,THROW_ILLEGAL_FN_CALL
+
+    or e
+    jr z,_OEMC_USBMOUNT_DEFAULT
+
+    ;--- Mount Nth file in the directory
+
+    push hl
+    push de
+
+    ld ix,DSK_REMOUNT_DIR
+    call OEM_CALL_BANK_1
+    or a
+    jp nz,THROW_DISK_ERROR
+
+    pop de
+    ld a,e
+    dec a
+    push iy
+    pop hl
+    ld bc,14
+    add hl,bc
+    ld ix,HWF_FIND_NTH_FILE
+    call OEM_CALL_BANK_1
+    or a
+    jr nz,_OEMC_USBMOUNT_DEFAULT_ERR
+
+    push iy
+    pop hl
+    push hl
+    pop de
+    ld bc,14
+    add hl,bc
+    ld ix,BM_GENERATE_FILENAME
+    call OEM_CALL_BANK_1
+
+    jr _OEMC_USBMOUNT_BYNAME_GO
+
+    ;--- Unmount currently mounted file
+
+_OEMC_USBMOUNT_UNMOUNT:
+    push hl
+
+    ld ix,DSK_CLOSE_FILE
+    call OEM_CALL_BANK_1
+
+    jr _OEM_USBMOUNT_END
+
+    ;--- Mount default file for directory
+
+_OEMC_USBMOUNT_DEFAULT:
+    push hl
+
+    ld ix,DSK_REMOUNT_DIR
+    call OEM_CALL_BANK_1
+    or a
+    jp nz,THROW_DISK_ERROR
+
+    push iy
+    pop hl
+    ld ix,DSK_GET_DEFAULT
+    call OEM_CALL_BANK_1
+    or a
+    jp z,_OEMC_USBMOUNT_BYNAME_GO
+
+_OEMC_USBMOUNT_DEFAULT_ERR:
+    dec a
+    dec a
+    jp z,THROW_FILE_NOT_FOUND
+    jp THROW_DISK_ERROR
+
+    ;--- Print currently mounted file
+
+_OEMC_USBMOUNT_PRINT:
+    push hl
+
+    call OEMC_ENSURE_STORAGE_DEVICE
+    and 1
+    jp z,THROW_FILE_NOT_FOUND
+
+    push iy
+    pop de
+    ld ix,DSK_READ_CURFILE_FILE
+    call OEM_CALL_BANK_1
+    dec a
+    jp z,THROW_DISK_ERROR
+    dec a
+    jp z,THROW_FILE_NOT_FOUND
+
+    push iy
+    pop hl
+    call OEM_PRINT
+    ld hl,OEM_S_CRLF
+    call OEM_PRINT
+
+    ld ix,DSK_REMOUNT
+    call OEM_CALL_BANK_1
+
+    pop hl
+    ret
+
+_OEM_USBMOUNT_END:
+    pop hl
+    inc hl
+    ret
 
 
     ;--- CALL USBCD - Print the current directory
@@ -178,6 +411,8 @@ OEM_S_NO_MEM:
     ;    CALL USBCD("/dir/dir") - Change to the specified absolute directory
 
 OEMC_USBCD:
+    call OEMC_ENSURE_STORAGE_DEVICE
+
     pop hl
 
     push iy
@@ -407,6 +642,14 @@ OEM_CALBAS:
 ; -----------------------------------------------------------------------------
 ; Throw various BASIC errors
 
+THROW_OUT_OF_MEMORY:
+    ld e,7
+    jr BASIC_ERR
+THROW_DIR_EXISTS:
+    ld e,73
+    ld a,(0F313h)
+    or a
+    jr nz,BASIC_ERR
 THROW_FILE_EXISTS:
     ld e,65
     jr BASIC_ERR

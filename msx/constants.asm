@@ -16,6 +16,7 @@ KILBUF: equ 0156h
 
 CHRGTR: equ 4666h
 FRMEVL: equ 4C64h
+FRMQNT: equ 542Fh
 FRESTR: equ 67D0h
 
 LINL40: equ 0F3AEh

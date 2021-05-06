@@ -474,13 +474,15 @@ _DSK_CHANGE_DIR_U_APPEND_OK:
     ;input: HL = new absolute dir
 
 _DSK_CHANGE_DIR_U_UPD_CURDIR:
-    call DSK_SET_CURDIR
+    call _DSK_SET_CURDIR
 
     ;Try the actual dir change, return if ok
 
     ld a,1
+    push hl
     call DSK_CHANGE_DIR
-    ret z
+    pop hl
+    jr z,_DSK_SET_CURDIR_OK
 
     ;Rewrite CURDIR with its old value,
     ;and change to the old directory again
@@ -505,7 +507,7 @@ DSK_CURDIR_S:
 
     ;--- Set the value of CURDIR from HL, preserves HL
 
-DSK_SET_CURDIR:
+_DSK_SET_CURDIR:
     push hl
     call BM_STRLEN
     pop de
@@ -514,6 +516,17 @@ DSK_SET_CURDIR:
     call DSK_WRITE_MAIN_CONFIG_FILE
     pop hl
     ret
+
+    ;--- Dir change ok: delete CURFILE since nothing is mounted now,
+    ;    and set dir again.
+
+_DSK_SET_CURDIR_OK:
+    push hl
+    ld hl,DSK_CURDIR_S
+    ld de,DSK_ZERO_S
+    call DSK_WRITE_MAIN_CONFIG_FILE
+    pop hl
+    jp _DSK_SET_CURDIR
 
 
 ; -----------------------------------------------------------------------------
@@ -575,6 +588,7 @@ _DSK_MOUNT:
     push hl
     ex de,hl
     ld hl,DSK_CURFILE_S
+    ld b,13
     call DSK_READ_MAIN_CONFIG_FILE
     pop hl
     dec hl      ;HL = Buffer for length of file name
@@ -895,7 +909,10 @@ _DSK_GET_DEFAULT:
 
 _DSK_GET_DEFAULT_NODEF:
     push hl
-    call DSK_GET_FIRST
+    push iy
+    pop hl
+    xor a
+    call HWF_FIND_NTH_FILE
     pop hl
     or a
     ret nz
@@ -1004,62 +1021,6 @@ DSK_DEFAST_S:
     db "DEFAULT.DS*",0
 DSK_DEFAULT_S:
     db "DEFAULT.DSK",0
-
-
-; -----------------------------------------------------------------------------
-; DSK_GET_FIRST: Get the first available file in the current directory
-;
-; Hidden files and files starting with "_" don't count.
-; -----------------------------------------------------------------------------
-; Input:  IY = Address of 32 byte buffer for directory entry
-; Output: A  = 0: Ok
-;              1: Other error
-;              2: File doesn't exist
-
-DSK_GET_FIRST:
-    ld a,CH_CMD_SET_FILE_NAME
-    out (CH_COMMAND_PORT),a
-    ld a,'*'
-    out (CH_DATA_PORT),a
-    xor a
-    out (CH_DATA_PORT),a
-    ld a,CH_CMD_FILE_OPEN
-    out (CH_COMMAND_PORT),a
-
-_DSK_GET_FIRST_LOOP:
-    call CH_WAIT_INT_AND_GET_RESULT
-    ld b,a
-    cp USB_ERR_MISS_FILE
-    ld a,2
-    ret z
-    ld a,b
-    cp CH_ST_INT_DISK_READ
-    ld a,1
-    ret nz
-
-    push iy
-    pop hl
-    call CH_READ_DATA
-    ld a,b
-    cp 32
-    ld a,1
-    ret nz
-
-    ld a,(iy)
-    cp '_'
-    jr z,_DSK_GET_FIRST_LOOP_NEXT
-
-    ld a,(iy+11)
-    and 11010b  ;Directory, hidden or volume?
-    jr nz,_DSK_GET_FIRST_LOOP_NEXT
-
-    xor a
-    ret
-
-_DSK_GET_FIRST_LOOP_NEXT:
-    ld a,CH_CMD_FILE_ENUM_GO
-    out (CH_COMMAND_PORT),a
-    jr _DSK_GET_FIRST_LOOP
 
 
 ; -----------------------------------------------------------------------------
@@ -1313,9 +1274,72 @@ _DSK_DO_BOOT_4:
 DSK_READ_CURDIR_FILE:
     ld hl,DSK_CURDIR_S
     ld b,64
+    jr _DSK_READ_FILE
+
+
+; -----------------------------------------------------------------------------
+; DSK_READ_CURFILE_FILE: Read the CURFILE config file in main directory
+; -----------------------------------------------------------------------------
+; Input:  DE = Destination address
+; Output: A  = 0: Ok
+;              1: Other error
+;              2: File not found
+;         B  = Amount of bytes read if no error, 0 on error
+;         DE = Pointer to the zero terminator
+
+DSK_READ_CURFILE_FILE:
+    ld hl,DSK_CURFILE_S
+    ld b,12
+_DSK_READ_FILE:
     call DSK_READ_MAIN_CONFIG_FILE
     push af
     xor a
     ld (de),a
     pop af
     ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_CLOSE_FILE: Close the current file, delete CURFILE, and update work area
+; -----------------------------------------------------------------------------
+
+DSK_CLOSE_FILE:
+    call HWF_CLOSE_FILE
+    ld hl,DSK_CURFILE_S
+    ld b,0
+    call DSK_WRITE_MAIN_CONFIG_FILE
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 0FEh
+    call WK_SET_STORAGE_DEV_FLAGS
+    ret
+
+
+DSK_REMOUNT_DIR:
+    push iy
+    ld iy,-65
+    add iy,sp
+    ld sp,iy
+    call _DSK_REMOUNT_DIR
+    ld iy,65
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_REMOUNT_DIR:
+    push iy
+    pop de
+    ld hl,DSK_CURDIR_S
+    ld b,64
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    jp nz,DSK_OPEN_MAIN_DIR
+    ld (de),a
+
+    push iy
+    pop hl
+    ld a,1
+    call DSK_CHANGE_DIR
+    or a
+    ret z
+    jp DSK_OPEN_MAIN_DIR

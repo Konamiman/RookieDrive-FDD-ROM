@@ -342,7 +342,7 @@ WK_GET_STORAGE_DEV_FLAGS:
 ; -----------------------------------------------------------------------------
 ; Set the storage device flags
 ;
-; Input: A = interface number
+; Input: A = storage device flags byte
 
 WK_SET_STORAGE_DEV_FLAGS:
     push ix
