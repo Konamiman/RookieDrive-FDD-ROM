@@ -25,6 +25,7 @@ LINLEN: equ 0F3B0h
 CRTCNT: equ 0F3B1h
 TXTCGP: equ 0F3B7h ;Address of pattern generator table in VRAM
 CLIKSW: equ 0F3DBh
+CSRX:   equ 0F3DDH
 CNSDFG: equ 0F3DEh
 PUTPNT: equ 0F3F8h
 GETPNT: equ 0F3FAh

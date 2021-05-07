@@ -77,6 +77,8 @@ OEM_COMMANDS:
     dw OEMC_USBCD
     db "USBMOUNT",0
     dw OEMC_USBMOUNT
+    db "USBFILES",0
+    dw OEMC_USBFILES
     db 0
 
 
@@ -581,6 +583,127 @@ OEMC_USBCD_PRINT:
     call OEM_CALL_BANK_1
 
     pop hl
+    ret
+
+
+    ;--- CALL USBFILES - List files in current directory
+
+OEMC_USBFILES:
+    call OEMC_ENSURE_STORAGE_DEVICE
+
+    push iy
+    ld iy,-14-1
+    add iy,sp
+    ld sp,iy
+    call _OEMC_USBFILES
+    ld iy,14+1
+    add iy,sp
+    ld sp,iy
+    pop iy
+
+    jp OEM_END
+
+_OEMC_USBFILES:
+
+    ;Throw error if we have less than 1.5K of free space
+
+    push hl
+    ld hl,0
+    add hl,sp
+    ld de,(STREND)
+    or a
+    sbc hl,de
+    ld a,h
+    cp 6
+    ld a,2
+    pop de
+    jp c,THROW_OUT_OF_MEMORY
+
+    ;How many columns to show?
+
+    ld a,(LINLEN)
+    ld b,1
+    cp 27
+    jr c,_OEMC_USBFILES_SETCOLS
+    inc b
+    cp 40
+    jr c,_OEMC_USBFILES_SETCOLS
+    inc b
+    cp 53
+    jr c,_OEMC_USBFILES_SETCOLS
+    inc b
+    cp 66
+    jr c,_OEMC_USBFILES_SETCOLS
+    inc b
+    cp 79
+    jr c,_OEMC_USBFILES_SETCOLS
+    inc b
+_OEMC_USBFILES_SETCOLS:
+    ld iyh,b
+
+    ;How many files to list?
+
+    ld bc,100   ;Work stack space
+    or a
+    sbc hl,bc
+    push hl
+    pop bc
+    push de
+    ld de,11
+    ld ix,DIVIDE_16 ;Now BC = Files to enum
+    call OEM_CALL_BANK_1
+    pop de
+
+    ;Get files
+
+    push bc
+    ld ix,DSK_REMOUNT_DIR
+    call OEM_CALL_BANK_1
+    pop bc
+
+    ld hl,(STREND)
+    ld ix,HWF_ENUM_FILES
+    call OEM_CALL_BANK_1
+    ld a,b
+    or c
+    jp z,THROW_FILE_NOT_FOUND
+
+    ;Print files
+
+    ld hl,(STREND)
+    ld e,0
+_OEMC_USBFILES_LOOP:
+    ld a,e
+    inc e
+    cp iyh
+    jr c,_OEMC_USBFILES_GO
+    push hl
+    ld hl,OEM_S_CRLF
+    call OEM_PRINT
+    pop hl
+    ld e,1
+
+_OEMC_USBFILES_GO:
+    ld a,(hl)
+    or a
+    jr z,_OEMC_USBFILES_END
+
+    push de
+    ld ix,BM_PRINT_FILENAME
+    call OEM_CALL_BANK_1
+    pop de
+_OEMC_USBFILES_PAD:
+    ld a,c
+    cp 13
+    jr nc,_OEMC_USBFILES_LOOP
+    ld a,' '
+    call CHPUT
+    inc c
+    jr _OEMC_USBFILES_PAD
+
+_OEMC_USBFILES_END:
+    ld ix,DSK_REMOUNT
+    call OEM_CALL_BANK_1
     ret
 
 
