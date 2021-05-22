@@ -44,12 +44,13 @@ INIENV_IMPL:
     xor a
     call WK_SET_LAST_REL_DRIVE
 
-    ld a,1
     call VERBOSE_RESET
     ld b,30
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
+    call WK_GET_STORAGE_DEV_FLAGS
+    ret z
     xor a
     jp DSK_DO_BOOT_PROC
 

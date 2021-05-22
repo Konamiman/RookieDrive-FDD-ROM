@@ -249,6 +249,10 @@ BM_DO_ESC:
 ;--- ENTER key press handler
 
 BM_DO_ENTER:
+    ld de,0206h ;CTRL is pressed?
+    call BM_KEY_CHECK_CORE
+    ld (iy+BM_TEMP),a
+
     ld l,(iy+BM_CUR_FILE_PNT)
     ld h,(iy+BM_CUR_FILE_PNT+1)
 
@@ -304,8 +308,24 @@ _BM_DO_ENTER_WAIT_RELEASE:  ;In case the "any key" pressed is enter
 
 _BM_DO_ENTER_FILE_SUCCESS:
     call KILBUF
-    xor a
-    ret ;Exit menu
+
+    ld a,(iy+BM_TEMP)   ;Was CTRL pressed?
+    or a
+    ld a,0
+    ret nz  ;Exit menu
+
+    ld hl,BM_RESETTING_S
+    call BM_PRINT_STATUS
+
+    call DSK_CREATE_TMP_BOOT_FILE
+    or a
+    ld iy,(EXPTBL-1)
+    ld ix,0
+    jp z,CALSLT
+
+    ld hl,BM_ERR_CREATING_TEMP_FILE_S
+    call BM_PRINT_STATUS_WAIT_KEY
+    jp BM_ENTER_MAIN_LOOP
 
     ;* It's a directory
 
@@ -360,6 +380,9 @@ _BM_COPY_DIR_NAME_LOOP:
     call BM_PRINT_CUR_DIR
 
     ld de,0106h ;SHIFT is pressed?
+    call BM_KEY_CHECK_CORE
+    jr z,_BM_DO_MOUNT_DEFAULT
+    ld de,0206h ;CTRL is pressed?
     call BM_KEY_CHECK_CORE
     jr z,_BM_DO_MOUNT_DEFAULT
 
@@ -1741,6 +1764,12 @@ BM_MOUNTING_DEF_S:
 BM_ERR_RETRIEVING_DEFAULT_S:
     db "Error retrieving default file for dir!",0
 
+BM_ERR_CREATING_TEMP_FILE_S:
+    db "Error creating temp file! Press any key",0
+
+BM_RESETTING_S:
+    db "Resetting computer...",0
+
 BM_DOTS_BAR_S:
     db "/.../",0
 
@@ -1754,12 +1783,14 @@ BM_HELP_1:
     db 13,10
     db " SHIFT+Up/Down: Up/down 10 pages",13,10
     db 13,10
-    db " Enter (on file): Mount file and boot",13,10
+    db " Enter (on file): Mount file and exit",13,10
     db 13,10
     db " Enter (on dir): Enter directory",13,10
     db 13,10
     db " SHIFT+Enter (on dir):",13,10
-    db "   Mount first file on dir and boot",13,10
+    db "   Mount default file on dir and exit",13,10
+    db 13,10
+    db " CTRL+Enter: Mount and reset",13,10
     db 13,10
     db " BS: Back to parent directory",13,10
     db 13,10
@@ -1781,11 +1812,11 @@ BM_HELP_2:
     db 13,10
     db " After boot it is possible to switch",13,10
     db " to another disk image file from the",13,10
-    db " same directory (up to 36 files).",13,10
+    db " same directory (up to 35 files).",13,10
     db 13,10
     db " On disk access press the key for the",13,10
-    db " file (1-0, A-Z), or press CODE/KANA",13,10
-    db " and when CAPS blinks press the key."
+    db " file (1-9, A-Z), or press CODE/KANA",13,10
+    db " and when CAPS lits press the key."
     db 0
 
 BM_CONFIG_BOOTDIR_S:

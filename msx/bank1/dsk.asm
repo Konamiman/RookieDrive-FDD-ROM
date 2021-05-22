@@ -1184,6 +1184,15 @@ _DSK_DO_BOOT_PROC_2:
     and 0FEh
     call WK_SET_STORAGE_DEV_FLAGS
 
+    ld a,(iy)
+    or a
+    jr nz,_DSK_DO_BOOT_PROC_3
+
+    call DSK_TEST_DEL_TMP_BOOT_FILE
+    or a
+    jp z,_DSK_DO_BOOT_4
+
+_DSK_DO_BOOT_PROC_3:
     call DSK_GET_BOOTMODE
 
     dec a
@@ -1343,3 +1352,60 @@ _DSK_REMOUNT_DIR:
     or a
     ret z
     jp DSK_OPEN_MAIN_DIR
+
+
+; -----------------------------------------------------------------------------
+; DSK_CREATE_TMP_BOOT_FILE: Create the temporary boot file
+; -----------------------------------------------------------------------------
+; Input:  -
+; Output: A  = 0: Ok
+;              1: Error
+
+DSK_CREATE_TMP_BOOT_FILE:
+    ld hl,DSK_TMP4_S
+    ld de,DSK_1_S
+    ld b,1
+    jp DSK_WRITE_MAIN_CONFIG_FILE
+
+DSK_TMP4_S:
+    db "TMP4",0
+DSK_1_S:
+    db "1"
+
+
+; -----------------------------------------------------------------------------
+; DSK_TEST_DEL_TMP_BOOT_FILE: Checks if the temporary boot file exists,
+;                             and deletes it
+; -----------------------------------------------------------------------------
+; Input:  -
+; Output: A  = 0: Ok, file existed
+;              1: Error
+;              2: Ok, file didn't exist
+
+DSK_TEST_DEL_TMP_BOOT_FILE:
+    push iy
+    ld iy,-1
+    add iy,sp
+    ld sp,iy
+    call _DSK_TEST_DEL_TMP_BOOT_FILE
+    ld iy,1
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_TEST_DEL_TMP_BOOT_FILE:
+    ld hl,DSK_TMP4_S
+    push iy
+    pop de
+    ld b,1
+    call DSK_READ_MAIN_CONFIG_FILE
+
+    or a    ;Not found or other error?
+    ret nz
+
+    ld hl,DSK_TMP4_S
+    ld b,0
+    call DSK_WRITE_MAIN_CONFIG_FILE
+    xor a
+    ret

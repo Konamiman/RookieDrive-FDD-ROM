@@ -309,7 +309,7 @@ Div16_NoAdd2:
 ;           L: VUTSRQPO
 ;           H: ....ZYXW
 ;
-;           H holds also the status of CAPS, GRAPH, CTRL and SHIFT
+;           H holds also the status of CODE/KANA, GRAPH, CTRL and SHIFT
 ;           on bits 7,6,5,4 respectively.
 ; Mofifies: AF, C
 ; -----------------------------------------------------------------------------
@@ -376,7 +376,7 @@ SCANK_DONE:
 ;3: JIHGFEDC
 ;4: RQPONMLK 
 ;5: ZYXWVUTS
-;6: .... CAPS GRAPH CTRL SHIFT
+;6: .... CODE/KANA GRAPH CTRL SHIFT
 ;Numeric:
 ;9:  43210...
 ;10: ...98765
@@ -465,8 +465,12 @@ SK_COMMON:
     rlca
     rlca
     rlca
-    and 11110000b       ;CAPS-GRAPH-CTRL-SHIFT-ZYXW
-    or  h
+    and 01110001b       ;0-GRAPH-CTRL-SHIFT-000-CODE/KANA
+    bit 0,a
+    jr z,SK_COMMON_2    ;CODE/KANA pressed?
+    xor 10000001b       ;Set bit 7 and reset bit 0
+SK_COMMON_2:
+    or  h               ;CODE/KANA-GRAPH-CTRL-SHIFT-ZYXW
 
     ld (iy+SK_H),a
 
@@ -593,9 +597,41 @@ CHECK_IS_RUSSIAN: ; in case of ZF
     ret
 
 
+	;--- Return in A the index of currently pressed key, 0 if none, FFh if CODE/KANA
+
+GETCURKEY:
+    xor a ;TODO: For now don't support russian keyboard
+    call SCANKEYS
+    bit 7,h
+    ld a,0FFh
+    ret nz
+    ld c,b
+	ld b,36
+    ld a,1
+
+    ;HLDEC = key statuses
+    ;B = Keys left to check
+    ;A = Current key index
+    ;We do an initial rotation because we want to start at key 1.
+CHGLOOP:
+    sra c
+    rr e
+    rr d
+    rr l
+    rr h
+    bit 0,c
+    ret nz
+
+    inc a
+    djnz CHGLOOP
+
+    xor a
+    ret
+
+
 ; -----------------------------------------------------------------------------
 ; WAIT_KEY_RELEASE: Wait until none of the numeric and alphabetic keys
-;                   or CAPS, GRAPH, CTRL, SHIFT is pressed.
+;                   or CODE/KANA, GRAPH, CTRL, SHIFT is pressed.
 ; -----------------------------------------------------------------------------
 
 WAIT_KEY_RELEASE:
@@ -607,13 +643,14 @@ WAIT_KEY_RELEASE:
 
 ; -----------------------------------------------------------------------------
 ; CAPSON and CAPSOFF: Turn the CAPS led on or off.
-; Modifies: AF
 ; -----------------------------------------------------------------------------
 
 CAPSON:
+    push af
     in  a,(0AAh)
     and 10111111b
     out (0AAh),a
+    pop af
     ret
 
 CAPSOFF:

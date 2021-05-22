@@ -77,6 +77,8 @@ OEM_COMMANDS:
     dw OEMC_USBCD
     db "USBMOUNT",0
     dw OEMC_USBMOUNT
+    db "USBMOUNTR",0
+    dw OEMC_USBMOUNTR
     db "USBFILES",0
     dw OEMC_USBFILES
     db 0
@@ -86,8 +88,10 @@ OEM_COMMANDS:
     ;    Resets USB hardware and prints device info, just like at boot time
 
 OEMC_USBRESET:
-    ld a,1
     ld ix,VERBOSE_RESET
+    call OEM_CALL_BANK_1
+    ld a,1
+    ld ix,DSK_DO_BOOT_PROC
     call OEM_CALL_BANK_1
     jp OEM_END
 
@@ -97,6 +101,10 @@ OEMC_USBRESET:
     ;    by the last executed UFI command
 
 OEMC_USBERROR:
+    ld ix,WK_GET_STORAGE_DEV_FLAGS
+    call OEM_CALL_BANK_1
+    jp nz,THROW_ILLEGAL_FN_CALL
+
     ld ix,WK_GET_ERROR
     call OEM_CALL_BANK_1
     or a
@@ -188,6 +196,25 @@ OEMC_USBMENU:
     jp OEM_END
 
 
+    ;--- CALL USBMOUNTR:
+    ;    Same as USBMOUNT but resets the machine afterwards
+    ;    (it doesn't support the "Show file currently mounted" mode)
+
+OEMC_USBMOUNTR:
+    pop hl
+    ld b,1
+    call _OEMC_USBMOUNT_COMMON
+
+    ld ix,DSK_CREATE_TMP_BOOT_FILE
+    call OEM_CALL_BANK_1
+    or a
+    jp nz,THROW_DISK_ERROR
+    
+    ld iy,(EXPTBL-1)
+    ld ix,0
+    jp CALSLT
+
+
     ;--- CALL USBMOUNT - Show file currently mounted
     ;    CALL USBMOUNT(-1) - Unmount file
     ;    CALL USBMOUNT(0) - Mount default file in current dir
@@ -195,8 +222,14 @@ OEMC_USBMENU:
     ;    CALL USBMOUNT("file.ext") - Mount specified file in current dir
 
 OEMC_USBMOUNT:
-    call OEMC_ENSURE_STORAGE_DEVICE
+    pop hl
+    ld b,0
 
+_OEMC_USBMOUNT_COMMON:
+    push hl
+    push bc
+    call OEMC_ENSURE_STORAGE_DEVICE
+    pop bc
     pop hl
 
     push iy
@@ -215,7 +248,9 @@ OEMC_USBMOUNT:
 _OEMC_USBMOUNT:
     dec hl
     ld ix,CHRGTR
+    push bc
     call OEM_CALBAS
+    pop bc
     jp z,_OEMC_USBMOUNT_PRINT
 
     cp '('
@@ -375,6 +410,10 @@ _OEMC_USBMOUNT_DEFAULT_ERR:
     ;--- Print currently mounted file
 
 _OEMC_USBMOUNT_PRINT:
+    ld a,b
+    or a
+    jp nz,THROW_SYNTAX_ERROR
+
     push hl
 
     call OEMC_ENSURE_STORAGE_DEVICE

@@ -332,6 +332,26 @@ CALL_XFER:
     ;=== DSKIO for storage devices (mounted file) ===
 
 _DSKIO_IMPL_STDEV:
+    ; Wait for VDP interrupt.
+	; This introduces a small delay that is required by some games.
+
+    push af
+	di
+	ld	a,2
+	out	(99h),a
+	ld	a,8fh
+	out	(99h),a
+WVDP:
+	in	a,(99h)
+	and	81h
+	dec	a
+	jr	z,WVDP
+	xor	a
+	out	(99h),a
+	ld	a,8fh
+	out	(99h),a
+    pop af
+
     call MAYBE_CHANGE_DSK
 
     push hl
@@ -374,6 +394,12 @@ _DSKIO_IMPL_STDEV_SEEKOK:
     ld b,c
 
     pop af
+    call CAPSON
+    call _DSKIO_IMPL_STDEV_GO
+    call CAPSOFF
+    ret
+
+_DSKIO_IMPL_STDEV_GO:
     jp c,_DSKIO_IMPL_STDEW_WRITE
 
 
@@ -586,7 +612,8 @@ _MAYBE_CHANGE_DSK:
     cp 0FFh
     jr nz,CHGF3
 
-    call WAIT_KEY_RELEASE ;GRAPH pressed: wait for other keys to release...
+    call CAPSON
+    call WAIT_KEY_RELEASE ;CODE/KANA pressed: wait for other keys to release...
 
 CHGWA2:
     call CAPSON
@@ -645,39 +672,6 @@ CHGF_END:
     call MYKILBUF
     call CAPSOFF
     ret
-
-
-	;--- Return in A the index of currently pressed key, 0 if none, FFh if GRAPH
-
-GETCURKEY:
-    xor a ;TODO: For now don't support russian keyboard
-    call SCANKEYS
-    bit 6,h
-    ld a,0FFh
-    ret nz
-    ld c,b
-	ld b,36
-    ld a,1
-
-    ;HLDEC = key statuses
-    ;B = Keys left to check
-    ;A = Current key index
-    ;We do an initial rotation because we want to start at key 1.
-CHGLOOP:
-    sra c
-    rr e
-    rr d
-    rr l
-    rr h
-    bit 0,c
-    ret nz
-
-    inc a
-    djnz CHGLOOP
-
-    xor a
-    ret
-
 
 ; -----------------------------------------------------------------------------
 ; DSKCHG
