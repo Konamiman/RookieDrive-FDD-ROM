@@ -98,7 +98,7 @@ _BM_NO_REMOUNT:
 
 DO_BOOT_MENU_MAIN:
     xor a
-    ld (iy+BM_CURSOR_LAST),a
+    ld (iy+BM_CURSOR_DELAY),a
     ld (iy+BM_NO_STOR_DEV),a
 
     ; Init screen mode, draw fixed elements
@@ -1426,30 +1426,65 @@ BM_CURSOR_IS_PRESSED:
 
     rlca
     ld b,2
-    jr nc,_BM_CURSOR_IS_PRESSED_END
+    jr nc,_BM_CURSOR_IS_PRESSED_GO
     rlca
     ld b,3
-    jr nc,_BM_CURSOR_IS_PRESSED_END
+    jr nc,_BM_CURSOR_IS_PRESSED_GO
     rlca
     ld b,1
-    jr nc,_BM_CURSOR_IS_PRESSED_END
+    jr nc,_BM_CURSOR_IS_PRESSED_GO
     rlca
     ld b,4
-    jr nc,_BM_CURSOR_IS_PRESSED_END
+    jr nc,_BM_CURSOR_IS_PRESSED_GO
 
     xor a
-    ld (iy+BM_CURSOR_LAST),a
+    ld (iy+BM_CURSOR_DELAY),a
     ret
 
-_BM_CURSOR_IS_PRESSED_END:
-    ld a,(iy+BM_CURSOR_LAST)
+_BM_CURSOR_IS_PRESSED_GO:
+    ;* Not previously pressed: return key, init delay counter
+
+    ld a,(iy+BM_CURSOR_DELAY)
     or a
-    ld a,0
-    ret nz  ;Still pressed since last time
+    jr nz,_BM_CURSOR_IS_PRESSED_GO_2
 
     inc a
-    ld (iy+BM_CURSOR_LAST),a
+    ld (iy+BM_CURSOR_DELAY),a
+    jr _BM_CURSOR_IS_PRESSED_END
+_BM_CURSOR_IS_PRESSED_GO_2:
 
+    ;* Bit 7 is set: we are already repeating
+
+    bit 7,a
+    jr z,_BM_CURSOR_IS_PRESSED_GO_3
+
+    cp 3+128    ;3 cycles passed since last repeat?
+    jr c,_BM_CURSOR_IS_PRESSED_INC_DELAY
+
+    ld a,128
+    ld (iy+BM_CURSOR_DELAY),a
+    jr _BM_CURSOR_IS_PRESSED_END
+_BM_CURSOR_IS_PRESSED_GO_3:
+
+    ;* Bit 7 is reset: we are waiting for the first repetition
+
+    cp 40   ;40 cycles passed since pressing?
+    jr c,_BM_CURSOR_IS_PRESSED_INC_DELAY
+
+    set 7,a
+    ld (iy+BM_CURSOR_DELAY),a
+    xor a
+    ret
+
+_BM_CURSOR_IS_PRESSED_INC_DELAY:
+    inc a
+    ld (iy+BM_CURSOR_DELAY),a
+    xor a
+    ret
+
+    ;* Check for SHIFT and return, input: B = Pressed key
+
+_BM_CURSOR_IS_PRESSED_END:
     dec hl
     dec hl  ;Row 6 (for SHIFT)
     ld a,(hl)
@@ -1873,8 +1908,8 @@ BM_CUR_PAGE_PNT: equ BM_NUM_FILES+2   ;Pointer to 1st filename in current page
 BM_CUR_FILE_PNT: equ BM_CUR_PAGE_PNT+2   ;Pointer to current filename
 BM_CUR_ROW: equ BM_CUR_FILE_PNT+2   ;Current logical row, 0-19
 BM_CUR_COL: equ BM_CUR_ROW+1   ;Current logical column, 0-2
-BM_CURSOR_LAST: equ BM_CUR_COL+1    ;Result of last call to BM_CURSOR_IS_PRESSED
-BM_NO_STOR_DEV: equ BM_CURSOR_LAST+1 ;FFh if F5 was pressed and no storage device was found
+BM_CURSOR_DELAY: equ BM_CUR_COL+1    ;Counter to control control key repetition delays
+BM_NO_STOR_DEV: equ BM_CURSOR_DELAY+1 ;FFh if F5 was pressed and no storage device was found
 BM_CUR_DIR_LEVEL: equ BM_NO_STOR_DEV+1  ;Current direcrory level, 0 is root
 BM_CUR_DIR: equ BM_CUR_DIR_LEVEL+1  ;Current directory, up to BM_MAX_DIR_NAME_LENGTH chars + 0
 BM_CUR_DIR_LENGTH: equ BM_CUR_DIR+BM_MAX_DIR_NAME_LENGTH+1
