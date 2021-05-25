@@ -215,7 +215,7 @@ BM_START_OVER:
     jp _BM_MAIN_LOOP
 
 _BM_START_OVER_OK:
-    call WK_INIT_FOR_STORAGE_DEV
+    call DSK_INIT_WK_FOR_STORAGE_DEV
     ld a,1
     call DSK_DO_BOOT_PROC
     jp DO_BOOT_MENU_MAIN
@@ -633,6 +633,20 @@ BM_DO_CONFIG_4:
     ld hl,BM_CONFIG_UNSET_DEF_S
     call PRINT
 
+    ;* Print "Enable/disable CAPS lit on file access"
+
+    ld hl,BM_CONFIG_TWOCRLF_S
+    call PRINT
+    call DSK_TEST_CAPS_LIT
+    or a
+    ld hl,BM_CONFIG_ENABLE_8_S
+    jr z,BM_DO_CONFIG_5
+    ld hl,BM_CONFIG_DISABLE_8_S
+BM_DO_CONFIG_5:
+    call PRINT
+    ld hl,BM_CONFIG_CAPS_LIT_S
+    call PRINT
+
     ;* All info printed, ask user what to do and do it
 
 BM_DO_CONFIG_ASK:
@@ -654,6 +668,9 @@ BM_DO_CONFIG_ASK:
 
     cp 7
     jr z,BM_DO_UNSET_DEFFILE
+
+    cp 8
+    jr z,BM_DO_TOGGLE_CAPS_LIT
 
     jr BM_DO_CONFIG_ASK ;Invalid action selected: ask again
 
@@ -693,6 +710,16 @@ BM_DO_UNSET_DEFFILE:
     ld hl,BM_ZERO_S
     call DSK_WRITE_DEFFILE_FILE
     jr BM_DO_CONFIG_AFTER_CHANGE
+
+BM_DO_TOGGLE_CAPS_LIT:
+    call DSK_TEST_CAPS_LIT
+    xor 1
+    call DSK_SET_OR_UNSET_CAPS_LIT
+    or a
+    jr nz,BM_DO_CONFIG_AFTER_CHANGE
+    call DSK_UPDATE_CAPS_LIT_WK
+    xor a
+    ;jr BM_DO_CONFIG_AFTER_CHANGE
 
     ;* After doing an action, show error if needed, then start over
 
@@ -1861,9 +1888,7 @@ BM_CONFIG_DEFFILE_S:
 BM_CONFIG_BOOTMODE_S:
     db "Boot mode: ",0
 BM_CONFIG_TEXT_S:
-    db 13,10
-    db 13,10
-    db "Change boot mode:",13,10
+    db ", to change press:",13,10
     db "  1: Show menu",13,10
     db "  2: Don't show menu, don't mount",13,10
     db "  3: Mount default file in boot dir",13,10
@@ -1876,12 +1901,20 @@ BM_CONFIG_SET_DEF_S:
     db "6: Set ",0
 BM_CONFIG_TEXT_2_S:
     db " as default file",13,10
-    db "   in this dir",13,10
+    db "   in this dir"
+BM_CONFIG_TWOCRLF_S:
+    db 13,10
     db 13,10
     db 0
 BM_CONFIG_UNSET_DEF_S:
     db "7: Unset explicit default file",13,10
     db "   in this dir",0
+BM_CONFIG_ENABLE_8_S:
+    db "8: Enable",0
+BM_CONFIG_DISABLE_8_S:    
+    db "8: Disable",0
+BM_CONFIG_CAPS_LIT_S:
+    db " CAPS lit on file access",0
 BM_CONFIG_CHOOSE_S:
     db "Choose an option, or 0 to exit: ",0
 

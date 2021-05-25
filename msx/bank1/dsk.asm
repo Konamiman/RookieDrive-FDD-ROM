@@ -1409,3 +1409,96 @@ _DSK_TEST_DEL_TMP_BOOT_FILE:
     call DSK_WRITE_MAIN_CONFIG_FILE
     xor a
     ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_SET_OR_UNSET_CAPS_LIT: Set or unset the CAPS lit on file access setting,
+;                            creating or deleting the NOCAPS config file
+; -----------------------------------------------------------------------------
+; Input: A = 0 to unset, A = 1 to set
+; Output: 0 = Ok, 1 = Error
+
+DSK_SET_OR_UNSET_CAPS_LIT:
+    xor 1
+    ld b,a
+    ld hl,DSK_NOCAPS_S
+    ld de,DSK_1_S
+    jp DSK_WRITE_MAIN_CONFIG_FILE
+
+DSK_NOCAPS_S:
+    db "NOCAPS",0
+
+
+; -----------------------------------------------------------------------------
+; DSK_TEST_CAPS_LIT: Check the CAPS lit on file access setting
+;                    by tryig to read the NOCAPS config file
+; -----------------------------------------------------------------------------
+; Input: -
+; Output: A = 0 if unset, 1 if set or error
+
+DSK_TEST_CAPS_LIT:
+    push iy
+    ld iy,-1
+    add iy,sp
+    ld sp,iy
+    call _DSK_TEST_CAPS_LIT
+    ld iy,1
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_DSK_TEST_CAPS_LIT:
+    ld hl,DSK_NOCAPS_S
+    push iy
+    pop de
+    ld b,1
+    call DSK_READ_MAIN_CONFIG_FILE
+    or a
+    ret z
+    ld a,1
+    ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_UPDATE_CAPS_LIT_WK: Update work area flag for the CAPS lit on file
+;                         access setting depending on the NOCAPS file existence
+; -----------------------------------------------------------------------------
+
+DSK_UPDATE_CAPS_LIT_WK:
+    push bc
+    call DSK_TEST_CAPS_LIT
+    rla
+    rla
+    rla
+    and 00001000b
+    ld b,a
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 11110111b
+    or b
+    call WK_SET_STORAGE_DEV_FLAGS
+    pop bc
+    ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_TEST_CAPS_LIT_WK: Check if CAPS lite on file access is set
+;                       by reading work area
+; -----------------------------------------------------------------------------
+; Input: -
+; Output: Z if unset, NZ if set
+
+DSK_TEST_CAPS_LIT_WK:
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 00001000b
+    ret
+
+
+; -----------------------------------------------------------------------------
+; DSK_INIT_WK_FOR_STORAGE_DEV: Initialize work area for a storage device
+; -----------------------------------------------------------------------------
+
+DSK_INIT_WK_FOR_STORAGE_DEV:
+    call WK_INIT_FOR_STORAGE_DEV
+    call DSK_UPDATE_CAPS_LIT_WK
+    ret

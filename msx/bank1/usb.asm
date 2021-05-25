@@ -58,7 +58,7 @@ _USB_CHECK_DEV_CHANGE_CHANGED:
     
     call HWF_MOUNT_DISK
     jr c,_USB_CHECK_DEV_CHANGE_NO_DEV
-    call WK_INIT_FOR_STORAGE_DEV
+    call DSK_INIT_WK_FOR_STORAGE_DEV
     ld a,1
     call DSK_DO_BOOT_PROC
     or a

@@ -663,7 +663,7 @@ CAPSOFF:
 
 
 ; -----------------------------------------------------------------------------
-; MYKILBUF: Empty yhe keyboard buffer (copy of BIOS routine KILBUF)
+; MYKILBUF: Empty the keyboard buffer (copy of BIOS routine KILBUF)
 ; Modifies: HL
 ; -----------------------------------------------------------------------------
 

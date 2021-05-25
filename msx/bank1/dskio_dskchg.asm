@@ -393,6 +393,12 @@ WVDP:
 _DSKIO_IMPL_STDEV_SEEKOK:
     ld b,c
 
+    call DSK_TEST_CAPS_LIT_WK
+    jr nz,_DSKIO_IMPL_STDEV_GO_CAPS
+    pop af
+    jr _DSKIO_IMPL_STDEV_GO
+
+_DSKIO_IMPL_STDEV_GO_CAPS:
     pop af
     call CAPSON
     call _DSKIO_IMPL_STDEV_GO

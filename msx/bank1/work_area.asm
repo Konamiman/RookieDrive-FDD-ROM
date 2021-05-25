@@ -39,6 +39,7 @@
 ;     bit 0: set to 1 if there's a file mounted
 ;     bit 1: set if mounted in read only mode
 ;     bit 2: set if file has changed
+;     bit 3: set to enable CAPS lit on disk access
 ; +1: Current directory depth:
 ;     0: no directory currently open
 ;     1: root directory, etc
