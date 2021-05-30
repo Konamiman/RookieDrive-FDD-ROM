@@ -64,13 +64,21 @@ OEM_COMMANDS:
     dw OEMC_USBRESET
     db "USBERROR2",0
     dw OEMC_USBERROR
+    db "USBMENU2",0
+    dw OEMC_USBMENU
+    db "USBCD2",0
+    dw OEMC_USBCD
+    db "USBMOUNT2",0
+    dw OEMC_USBMOUNT
+    db "USBMOUNTR2",0
+    dw OEMC_USBMOUNTR
+    db "USBFILES2",0
+    dw OEMC_USBFILES
     else
     db "USBRESET",0
     dw OEMC_USBRESET
     db "USBERROR",0
     dw OEMC_USBERROR
-    endif
-
     db "USBMENU",0
     dw OEMC_USBMENU
     db "USBCD",0
@@ -81,6 +89,63 @@ OEM_COMMANDS:
     dw OEMC_USBMOUNTR
     db "USBFILES",0
     dw OEMC_USBFILES
+    endif
+
+    db "USBHELP",0
+    dw OEMC_USBHELP
+    db 0
+
+    ;--- CALL USBHELP
+    ;    Show info on available CALL commands
+
+OEMC_USBHELP:
+    ld hl,OEM_S_HELP
+    call OEM_PRINT
+    jp OEM_END
+
+OEM_S_HELP:
+    ;   ----------------------------------------
+    if USE_ALTERNATIVE_PORTS=1
+    db "_USBRESET2 - Re-initialize device",13,10
+    db 13,10
+    db "FDD device only:",13,10
+    db "_USBERROR2 - Show last ASC/ASCQ err",13,10
+    db 13,10
+    db "Storage device only:",13,10
+    db "_USBMENU2 - Show file navig menu",13,10
+    db "_USBCD2 - Show current dir",13,10
+    ;db"_USBCD2("dir/dir") - Change dir, rel",13,10
+    db "_USBCD2(",34,"dir/dir",34,") - Change dir, rel",13,10
+    ;db"_USBCD2("/dir/dir") - Change dir (abs)",13,10
+    db "_USBCD2(",34,"/dir/dir",34,") - Change dir,abs",13,10
+    db "_USBMOUNT2 - Show mounted file name",13,10
+    ;db"_USBMOUNT2("file.ext") - Mount file",13,10
+    db "_USBMOUNT2(",34,"file.ext",34,") - Mount file",13,10
+    db "_USBMOUNT2(-1) - Unmount file",13,10
+    db "_USBMOUNT2(0) - Mount default file",13,10
+    db "_USBMOUNT2(n) - Mount nth file, 1-255",13,10
+    db "_USBMOUNTR2(...) - Mount and reset",13,10
+    else
+    db "_USBRESET - Re-initialize device",13,10
+    db 13,10
+    db "FDD device only:",13,10
+    db "_USBERROR - Show last ASC/ASCQ error",13,10
+    db 13,10
+    db "Storage device only:",13,10
+    db "_USBMENU - Show file navigation menu",13,10
+    db "_USBCD - Show current dir",13,10
+    ;db"_USBCD("dir/dir") - Change dir, rel",13,10
+    db "_USBCD(",34,"dir/dir",34,") - Change dir, rel",13,10
+    ;db"_USBCD("/dir/dir") - Change dir (abs)",13,10
+    db "_USBCD(",34,"/dir/dir",34,") - Change dir, abs",13,10
+    db "_USBMOUNT - Show mounted file name",13,10
+    ;db"_USBMOUNT("file.ext") - Mount file",13,10
+    db "_USBMOUNT(",34,"file.ext",34,") - Mount file",13,10
+    db "_USBMOUNT(-1) - Unmount file",13,10
+    db "_USBMOUNT(0) - Mount default file",13,10
+    db "_USBMOUNT(n) - Mount nth file, 1-255",13,10
+    db "_USBMOUNTR(...) - Mount and reset",13,10
+    endif
     db 0
 
 

@@ -1867,10 +1867,11 @@ BM_HELP_2:
     db " SHIFT+ESC: Set current dir and",13,10
     db "   exit without mounting",13,10
     db 13,10
-    db 13,10
     db " TAB (while booting):",13,10
     db "   temporarily force boot mode 1",13,10
     db 13,10
+    db " CALL USBHELP / _USBHELP (in BASIC):",13,10
+    db "   show list of available CALL commands",13,10
     db 13,10
     db " After boot it is possible to switch",13,10
     db " to another disk image file from the",13,10
