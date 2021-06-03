@@ -4,6 +4,8 @@
 
 This project implements a standard MSX-DOS 1 DiskROM that allows using standard USB floppy disk drives, thus effectively turning Rookie Drive into an "old-school" MSX floppy disk controller with a few extra perks. A few variants are offered that differ in behavior as explained below.
 
+Since version 2.0 this ROM also supports working with disk image files contained in standard USB storage devices such as pendrives or SD card readers. The "disk image mode" will activate automatically whenever a standard USB storage device is connected to the USB port; if a floppy disk drive is connected then the "floppy disk mode" (the only mode available in older versions of the ROM) will activate instead. See [the documentation about the disk image mode](DISK_IMAGE_MODE.md) for details.
+
 ## Compiling
 
 To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adjust the configuration flags as desired in [the config.asm file](/msx/config.asm) and run:
@@ -18,7 +20,7 @@ This ROM adds a few extra features to what a standard DiskROM offers, some of th
 
 ### Hot-plug support
 
-Although the ROM will detect and initialize the FDD at boot time, you can also plug it later if you want and it will be usable immediately. You can even unplug the device, plug it again (or even plug a different one!) and everything will continue working.
+Although the ROM will detect and initialize the FDD or storage device at boot time, you can also plug it later if you want and it will be usable immediately. You can even unplug the device, plug it again (or even plug a different one!) and everything will continue working.
 
 ### SHIFT key
 
@@ -36,7 +38,7 @@ If you plan to use this DiskROM primarily to load games, the recommended variant
 
 ### Quick format
 
-Additionally to the usual full formatting, the `(CALL) FORMAT` command offers quick formatting option. This one skips the physical formatting and only initializes the boot sector, FAT and root directory of the disk.
+Additionally to the usual full formatting, the `(CALL) FORMAT` command offers quick formatting option. This one skips the physical formatting and only initializes the boot sector, FAT and root directory of the disk. Currently the `(CALL) FORMAT` command works on floppy disk drives only (it won't work with disk images).
 
 ### 1.44M disks support
 
@@ -57,6 +59,8 @@ If the error happened at the USB physical or protocol level, you will see it as 
     ASC:  3Ah
     ASCQ: 00h
 
+Currently the `CALL USBERROR` command will work only when a floppy disk drive is connected.
+
 ### The panic button
 
 Executing USB transactions involves sending a command to the USB host controller hardware and waiting for it to notify completion (or error) with an interrupt. Under normal circumstances this always happens, but if for some reason it doesn't, the computer will hang waiting forever for this interrupt.
@@ -71,7 +75,7 @@ Rookie Drive usually uses ports 20h and 21h to communicate with the USB host con
 
 It is possible to adapt this project to work with hardware other than Rookie Drive. Such hardware should have at least 32K of mapped ROM in page 1, and of course, some kind of USB host controller.
 
-Regarding the USB host controller, all the code that is specific to the CH376 lives in [the ch376.asm file](/msx/bank1/ch376.asm), you will need to create a new file that implements the same "public" routines but adapted to the new controller. Look at the header of that file for detailed instructions.
+Regarding the USB host controller, all the code that is specific to the CH376 lives in [the ch376.asm file](/msx/bank1/ch376.asm), you will need to create a new file that implements the same "public" routines but adapted to the new controller. Look at the header of that file for detailed instructions. (Since version 2.0 this file also contains some routines that are specific for handling FAT filesystems, these are the ones whose names are prefixed with `HWF_`).
 
 As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you don't need to change anything else from the existing code. If it's ASCII8, set the `USE_ASCII8_ROM_MAPPER` flag in [the config.asm file](/msx/config.asm) to 1. For any other mapping mechanism you will need to manually change the code, search for usages of the `ROM_BANK_SWITCH` constant for guidance.
 
