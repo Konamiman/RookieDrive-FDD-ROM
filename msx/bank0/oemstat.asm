@@ -118,6 +118,7 @@ OEM_S_HELP:
     db "_USBCD2(",34,"dir/dir",34,") - Change dir, rel",13,10
     ;db"_USBCD2("/dir/dir") - Change dir (abs)",13,10
     db "_USBCD2(",34,"/dir/dir",34,") - Change dir,abs",13,10
+    db "_USBFILES2 - List files in curr dir",13,10
     db "_USBMOUNT2 - Show mounted file name",13,10
     ;db"_USBMOUNT2("file.ext") - Mount file",13,10
     db "_USBMOUNT2(",34,"file.ext",34,") - Mount file",13,10
@@ -138,6 +139,7 @@ OEM_S_HELP:
     db "_USBCD(",34,"dir/dir",34,") - Change dir, rel",13,10
     ;db"_USBCD("/dir/dir") - Change dir (abs)",13,10
     db "_USBCD(",34,"/dir/dir",34,") - Change dir, abs",13,10
+    db "_USBFILES - List files in curr dir",13,10
     db "_USBMOUNT - Show mounted file name",13,10
     ;db"_USBMOUNT("file.ext") - Mount file",13,10
     db "_USBMOUNT(",34,"file.ext",34,") - Mount file",13,10
