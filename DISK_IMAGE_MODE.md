@@ -28,7 +28,7 @@ The boot menu can also be invoked by executing `CALL USBMENU` from BASIC.
 
 ## The default file
 
-Each directory that is not empty has a _default file_. This is the file that will be mounted when you press `Shift+Enter` while the directory is selected, when you run the `CALL USBMOUNT(0)` command from BASIC, and when booting the computer in boot mode 3.
+Each directory that is not empty has a _default file_. This is the file that will be mounted when you press `Shift+Enter` while the directory is selected in the boot menu, when you run the `CALL USBMOUNT(0)` command from BASIC, and when booting the computer in boot mode 3.
 
 The default file for a given directory is determined as follows:
 
@@ -153,6 +153,6 @@ A disk image file will be mounted as read-only if it has the read-only attribute
 
 ## Limitations
 
-The ROM doesn't currently provide any way to create, delete, rename, move, change attributes, or otherwise manipulate the directories and disk image files on the storage device from within the MSX itself; you'll have to do that from other USB-capable computer (you can, of course, write to mounted disk image files using the regular MSX-DOS/DiskBASIC functions). These missing bits might be added in a future version of the ROM.
+The ROM doesn't currently provide any way to create, delete, rename, move, change attributes, or otherwise manipulate the directories and disk image files on the storage device from within the MSX itself; you'll have to do that from another USB-capable computer (you can, of course, write to mounted disk image files using the regular MSX-DOS/DiskBASIC functions). These missing bits might be added in a future version of the ROM.
 
 The files and directories are always listed (in the boot menu and with `CALL USBFILES`) in the order in which their directory entries are physically located in the device, if you want to see them in alphabetical order you'll have to use a tool to permanently reorder them from within another computer.

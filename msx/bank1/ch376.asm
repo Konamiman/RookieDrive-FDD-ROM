@@ -754,8 +754,7 @@ HWF_DELETE_FILE:
 ; -----------------------------------------------------------------------------
 ; HWF_ENUM_FILES: Enumerate files and directories in the current directory
 ;
-; Files/directories whose first character is not a letter or a digit
-; will be skipped.
+; Files/directories whose first character is "_" will be skipped.
 ;
 ; The name of each files/directory will be put at the specified address,
 ; sequentially and with no separators, as a fixed 11 bytes string in the
@@ -871,7 +870,7 @@ Num2:
 ; -----------------------------------------------------------------------------
 ; HWF_FIND_NTH_FILE: Find the Nth file in the current directory
 ;
-; Files whose first character is not a letter or a digit will be skipped.
+; Files whose first character is "_" will be skipped.
 ;
 ; The name of the files will be put at the specified address,
 ; sequentially and with no separators, as a fixed 11 bytes string in the
@@ -933,15 +932,16 @@ _HWF_ENUM_FILES_LOOP:
     pop bc
 
     ld a,(hl)
-    call IS_DIGIT_OR_LETTER
-    jr nc,_HWF_ENUM_DIR_NEXT
+    cp "_"
+    jr z,_HWF_ENUM_DIR_NEXT
 
     push bc
     ld bc,11
     add hl,bc ;Point to file attributes byte
     pop bc
 
-    bit 1,(hl)  ;"Hidden" attribute set?
+    ld a,(hl)
+    and 1110b   ;"Hidden", "System" or "Volume" attribute set?
     jr nz,_HWF_ENUM_SKIP
     ld a,iyl
     or a
