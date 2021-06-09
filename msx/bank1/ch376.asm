@@ -934,6 +934,8 @@ _HWF_ENUM_FILES_LOOP:
     ld a,(hl)
     cp "_"
     jr z,_HWF_ENUM_DIR_NEXT
+    cp "."  ;Skip "." and ".." entries
+    jr z,_HWF_ENUM_DIR_NEXT
 
     push bc
     ld bc,11
