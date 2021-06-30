@@ -16,6 +16,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
         const byte CMD_RD_USB_DATA0 = 0x27;
         const byte CMD_WR_HOST_DATA = 0x2C;
 
+        private byte aaPortValue = 0;
         private readonly ICH376Ports chPorts;
         private byte[] multiDataTransferBuffer;
         public int multiDataTransferPointer;
@@ -106,12 +107,12 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
 
         private void Cpu_MemoryAccess(object sender, MemoryAccessEventArgs e)
         {
-            if(e.Address == 0x20)
+            if (e.Address == 0x20)
             {
                 if (e.EventType == MemoryAccessEventType.BeforePortRead)
                 {
                     e.CancelMemoryAccess = true;
-                    if(waitingMultiDataTransferLength)
+                    if (waitingMultiDataTransferLength)
                     {
                         waitingMultiDataTransferLength = false;
                         e.Value = chPorts.ReadData();
@@ -148,7 +149,7 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                         multiDataTransferBuffer[multiDataTransferPointer] = e.Value;
                         multiDataTransferPointer++;
                         multiDataTransferRemaining--;
-                        if(multiDataTransferRemaining == 0)
+                        if (multiDataTransferRemaining == 0)
                             chPorts.WriteMultipleData(multiDataTransferBuffer);
                     }
                     else
@@ -173,7 +174,22 @@ namespace Konamiman.RookieDrive.NestorMsxPlugin
                         waitingMultiDataTransferLength = true;
                 }
             }
-            
+            else if (e.Address == 0xAA) {
+                if (e.EventType == MemoryAccessEventType.AfterPortWrite)
+                {
+                    var wasOn = (aaPortValue & 0x40) == 0;
+                    var on = (e.Value & 0x40) == 0;
+                    if (on != wasOn)
+                    {
+                        Debug.WriteLine("CAPS " + (on ? "ON" : "OFF"));
+                    }
+                    aaPortValue = e.Value;
+                }
+                else if(e.EventType == MemoryAccessEventType.AfterPortRead)
+                {
+                    e.Value = aaPortValue;
+                }
+            }
         }
     }
 }

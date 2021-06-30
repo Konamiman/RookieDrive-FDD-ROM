@@ -12,6 +12,12 @@ namespace Konamiman.RookieDrive.Sandbox
 
         static void Main(string[] args)
         {
+            var port = args.Length == 0 ? "COM5" : args[0];
+            var ch = new CH376PortsViaNoobtocol(port);
+            var hw = new CH372DeviceHardware(ch);
+            hw.HardwareReset();
+            return;
+
             try
             {
                 Console.SetWindowSize(Console.WindowWidth, Console.WindowHeight + 10);
@@ -43,9 +49,10 @@ namespace Konamiman.RookieDrive.Sandbox
             Console.WriteLine($"Filesystem: {diskTypeAndCapacity.filesystem}");
             Console.WriteLine();
 
+            string[] files;
             hw.InitFilesystem();
-            var files = hw.EnumerateFiles("/");
-            if(files.Length == 0)
+            files = hw.EnumerateFiles("/");
+            if (files.Length == 0)
             {
                 Console.WriteLine("*** No files found");
             }
@@ -56,25 +63,27 @@ namespace Konamiman.RookieDrive.Sandbox
                     Console.WriteLine(name);
 
                 Console.WriteLine();
-                Console.WriteLine("Files found in DSK:");
-                files = hw.EnumerateFiles("DSK");
-                foreach (var name in files)
-                    Console.WriteLine(name);
-
-                Console.WriteLine("Writing file... " + hw.WriteFileContents("NBASIC.TXT", longString));
-                Console.WriteLine();
-
-                Console.WriteLine();
-                if (!hw.ChangeDir("/DSK"))
-                {
-                    Console.WriteLine("*** Can't change to dir DSK");
-                }
-                else
-                {
-                    Console.WriteLine("Contents of DSK/NBASIC.TXT:");
-                    Console.Write(hw.ReadFileContents("NBASIC.TXT"));
-                }
             }
+
+            Console.WriteLine("Files found in DSK:");
+            files = hw.EnumerateFiles("/DSK");
+            foreach (var name in files)
+                Console.WriteLine(name);
+
+            Console.WriteLine("Writing file... " + hw.WriteFileContents("NBASICX.TXT", longString));
+            Console.WriteLine();
+
+            Console.WriteLine();
+            if (!hw.ChangeDir("/DSK"))
+            {
+                Console.WriteLine("*** Can't change to dir DSK");
+            }
+            else
+            {
+                Console.WriteLine("Contents of DSK/NBASIC.TXT:");
+                Console.Write(hw.ReadFileContents("NBASIC.TXT"));
+            }
+
             Console.ReadKey();
             return;
 

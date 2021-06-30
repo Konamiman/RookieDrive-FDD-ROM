@@ -30,6 +30,11 @@ namespace Konamiman.RookieDrive.Usb
         const byte CMD_RET_SUCCESS = 0x51;
         const byte CMD_RET_ABORT = 0x5F;
 
+        const byte CMD_GET_IC_VER = 0x01;
+        const byte CMD_READ_VAR8 = 0x0A;
+        const byte CMD_WRITE_VAR8 = 0x0B;
+        const byte CMD_READ_VAR32 = 0x0C;
+        const byte CMD_WRITE_VAR32 = 0x0D;
         const byte CMD_TEST_CONNECT = 0x16;
         const byte CMD_DISK_CONNECT = 0x30;
         const byte CMD_DISK_MOUNT = 0x31;
@@ -371,6 +376,25 @@ namespace Konamiman.RookieDrive.Usb
 
         public object GetDiskTypeAndCapacity()
         {
+            byte d;
+            ch.WriteCommand(CMD_GET_IC_VER);
+            d = ch.ReadData();
+            if (d < 0x43)
+            {
+                // This is supposed to be a fix for bad handling of FAT32
+                // columes in older versions of the chip
+                ch.WriteCommand(CMD_READ_VAR8);
+                ch.WriteData(0x28);  //VAR_DISK_STATUS
+                d = ch.ReadData();
+                if (d >= 0x10)  //DEF_DISK_READY
+                {
+                    ch.WriteCommand(CMD_WRITE_VAR8);
+                    ch.WriteData(0x28);
+                    ch.WriteData(3); //DEF_DISK_MOUNTED
+                }
+            }
+                
+
             ch.WriteCommand(CMD_DISK_QUERY);
             var result = WaitAndGetResult();
             if (result != UsbPacketResult.Ok)
@@ -396,25 +420,41 @@ namespace Konamiman.RookieDrive.Usb
 
         public void InitFilesystem()
         {
+            return;
+            FixSetFilename();
             ch.WriteCommand(CMD_SET_FILE_NAME);
             ch.WriteData(0);
             ch.WriteCommand(CMD_FILE_OPEN);
         }
 
+        private UsbPacketResult DoFileOpen(string name)
+        {
+            FixSetFilename();
+            ch.WriteCommand(CMD_SET_FILE_NAME);
+            ch.WriteMultipleData(Encoding.ASCII.GetBytes(name + "\0"));
+
+            if (name[0] == '/')
+            {
+                ch.WriteCommand(CMD_WRITE_VAR32);
+                ch.WriteData(0x64); //VAR_CURRENT_CLUST
+                ch.WriteData(0);
+                ch.WriteData(0);
+                ch.WriteData(0);
+                ch.WriteData(0);
+            }
+            
+            ch.WriteCommand(CMD_FILE_OPEN);
+            return WaitAndGetResult();
+        }
+
         public string[] EnumerateFiles(string searchPath = "/")
         {
-            ch.WriteCommand(CMD_SET_FILE_NAME);
-            ch.WriteMultipleData(Encoding.ASCII.GetBytes(searchPath + "\0"));
-            ch.WriteCommand(CMD_FILE_OPEN);
-            var result = WaitAndGetResult();
+            var result = DoFileOpen(searchPath);
             if (result != UsbPacketResult.ERR_OPEN_DIR)
                 return new[] { $"*** Error opening directory: {result}" };
 
-            ch.WriteCommand(CMD_SET_FILE_NAME);
-            ch.WriteMultipleData(Encoding.ASCII.GetBytes("*\0"));
-            ch.WriteCommand(CMD_FILE_OPEN);
+            result = DoFileOpen("*");
 
-            result = WaitAndGetResult();
             var data = new byte[32];
             var names = new List<string>();
             while (result == UsbPacketResult.USB_INT_DISK_READ)
@@ -443,10 +483,7 @@ namespace Konamiman.RookieDrive.Usb
             UsbPacketResult result;
             var data = new byte[65535];
 
-            ch.WriteCommand(CMD_SET_FILE_NAME);
-            ch.WriteMultipleData(Encoding.ASCII.GetBytes(filename + "\0"));
-            ch.WriteCommand(CMD_FILE_OPEN);
-            result = WaitAndGetResult();
+            result = DoFileOpen(filename);
             if (result != UsbPacketResult.Ok)
                 return "*** Error opening file: " + result.ToString();
 
@@ -478,10 +515,7 @@ namespace Konamiman.RookieDrive.Usb
         {
             UsbPacketResult result;
 
-            ch.WriteCommand(CMD_SET_FILE_NAME);
-            ch.WriteMultipleData(Encoding.ASCII.GetBytes(filename + "\0"));
-            ch.WriteCommand(CMD_FILE_OPEN);
-            result = WaitAndGetResult();
+            result = DoFileOpen(filename);
             if(result == UsbPacketResult.ERR_MISS_FILE)
             {
                 Console.WriteLine(">>> File doesn't exist, creating");
@@ -531,16 +565,71 @@ namespace Konamiman.RookieDrive.Usb
                 return "*** Error updating file dir entry after write: " + result.ToString();
             }
 
+            ch.WriteCommand(CMD_FILE_CLOSE);
+            ch.WriteData(1);
+            WaitAndGetResult();
             return ">>> Write ok!";
         }
 
         public bool ChangeDir(string dir)
         {
+            var result = DoFileOpen(dir);
+            return result == UsbPacketResult.ERR_OPEN_DIR;
+        }
+
+        private void FixSetFilename()
+        {
+            /*ch.WriteCommand(CMD_FILE_CLOSE);
+            ch.WriteData(0);
+            WaitAndGetResult();*/
+
+            byte d;
+            ch.WriteCommand(CMD_GET_IC_VER);
+            d = ch.ReadData();
+            if (d >= 0x43)
+                return;
+
+            ch.WriteCommand(CMD_READ_VAR8);
+            ch.WriteData(0x2B);  //VAR_DISK_STATUS
+            d = ch.ReadData();
+            if (d >= 0x10)  //DEF_DISK_READY
+                return;
+
             ch.WriteCommand(CMD_SET_FILE_NAME);
-            ch.WriteMultipleData(Encoding.ASCII.GetBytes(dir + "\0"));
+            ch.WriteData(0);
             ch.WriteCommand(CMD_FILE_OPEN);
             var result = WaitAndGetResult();
-            return result == UsbPacketResult.ERR_OPEN_DIR;
+            if (result != UsbPacketResult.Ok)
+                return;
+
+            ch.WriteCommand(CMD_READ_VAR8);
+            ch.WriteData(0xCF);
+            d = ch.ReadData();
+            if (d == 0)
+                return;
+
+            WriteFix(0x4C, d);
+            WriteFix(0x50, d);
+            ch.WriteCommand(CMD_WRITE_VAR32);
+            ch.WriteData(0x70);
+            ch.WriteData(0);
+            ch.WriteData(0);
+            ch.WriteData(0);
+            ch.WriteData(0);
+        }
+
+        private void WriteFix(byte address, byte value)
+        {
+            ch.WriteCommand(CMD_READ_VAR32);
+            ch.WriteData(address);
+            uint value32 = (uint)(ch.ReadData() + ch.ReadData() << 8 + ch.ReadData() << 16 + ch.ReadData() << 24);
+            value32 += (uint)(value << 8);
+            ch.WriteCommand(CMD_WRITE_VAR32);
+            ch.WriteData(address);
+            ch.WriteData((byte)(value32 & 0xFF));
+            ch.WriteData((byte)((value32 >> 8) & 0xFF));
+            ch.WriteData((byte)((value32 >> 16) & 0xFF));
+            ch.WriteData((byte)((value32 >> 24) & 0xFF));
         }
     }
 }
