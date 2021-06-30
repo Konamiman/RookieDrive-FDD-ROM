@@ -53,13 +53,3 @@ DELAY_AFTER_PRINT:
     ret z
     xor a
     jp DSK_DO_BOOT_PROC
-
-    ret
-
-
-    call WK_INIT_FOR_STORAGE_DEV
-    xor a
-    call WK_SET_LAST_REL_DRIVE
-
-    call DO_BOOT_MENU
-    ret

@@ -1,5 +1,6 @@
 sandbox/
+.vscode/
 *.lst
 *.out
 *.rom
-.sym
+*.sym
