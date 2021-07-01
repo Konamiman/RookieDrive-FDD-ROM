@@ -9,8 +9,6 @@
 ; because we need to setup the work area during reset, but work area
 ; is zeroed by kernel between INIHRD and INIENV.
 
-INITXT: equ 006Ch
-
 
 ; -----------------------------------------------------------------------------
 ; INIHRD
@@ -43,9 +41,15 @@ INIENV_IMPL:
     push hl
     endif
 
+    xor a
+    call WK_SET_LAST_REL_DRIVE
+
     call VERBOSE_RESET
     ld b,30
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT
-    ret
+    call WK_GET_STORAGE_DEV_FLAGS
+    ret z
+    xor a
+    jp DSK_DO_BOOT_PROC

@@ -5,7 +5,7 @@
 ; We use the 8 bytes available for our slot at SLTWRK.
 
 
-; Work area definition:
+; Work area definition when a FDD is connected:
 ;
 ; +0: Bulk OUT endpoint parameters
 ; +1: Bulk IN endpoint parameters
@@ -30,6 +30,20 @@
 ;  10 = 32 bytes
 ;  11 = 64 bytes
 ;
+; Work area definition when a storage device is connected:
+;
+; +0: flags:
+;     bit 7: set to 1, indicates a storage device is connected
+;            (if a floppy is connected it'll be 0 since the byte holds
+;             the OUT endpoint number)
+;     bit 0: set to 1 if there's a file mounted
+;     bit 1: set if mounted in read only mode
+;     bit 2: set if file has changed
+;     bit 3: set to enable CAPS lit on disk access
+; +1: Current directory depth:
+;     0: no directory currently open
+;     1: root directory, etc
+; 
 ; If no device is connected or the connected device is not a CBI FDD,
 ; or if some error occurred during USB hardware or device initialization,
 ; the work area contents is all zero 
@@ -290,6 +304,81 @@ WK_GET_LAST_REL_DRIVE:
     push ix
     call _WK_GETWRK
     ld a,(ix+4)
+    pop ix
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Initialize work area for a storage device
+
+WK_INIT_FOR_STORAGE_DEV:
+    call WK_ZERO
+    call _WK_GETWRK
+    ld (ix),80h
+    ld (ix+1),0
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Retrieve the storage device flags
+;
+; Output: A = storage device flags byte
+;         NZ if a storage device is connected, Z otherwise
+
+WK_GET_STORAGE_DEV_FLAGS:
+    push hl
+    push de
+    push bc
+    push ix
+    call _WK_GETWRK
+    ld a,(ix)
+    pop ix
+    pop bc
+    pop de
+    pop hl
+    bit 7,a
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Set the storage device flags
+;
+; Input: A = storage device flags byte
+
+WK_SET_STORAGE_DEV_FLAGS:
+    push ix
+    push af
+    call _WK_GETWRK
+    pop af
+    ld (ix),a
+    pop ix
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Retrieve the current directory depth for the storage device
+;
+; Output: A = current directory depth
+
+WK_GET_CUR_DIR_DEPTH:
+    push ix
+    call _WK_GETWRK
+    ld a,(ix+1)
+    pop ix
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Set the current directory depth for the storage device
+;
+; Input: A = directory depth to set
+
+WK_SET_CUR_DIR_DEPTH:
+    push ix
+    push af
+    call _WK_GETWRK
+    pop af
+    ld (ix+1),a
     pop ix
     ret
 

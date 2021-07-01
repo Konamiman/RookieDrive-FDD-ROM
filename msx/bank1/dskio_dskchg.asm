@@ -57,15 +57,6 @@ _DSKIO_ERR_PARAM:
     ret
 
 _DSKIO_OK_UNIT:
-    ld a,b
-    pop bc
-    rrc c   ;Now C:7 = 0 to read, 1 to write
-    ld b,a
-
-    ;ld a,b
-    or a
-    ret z   ;Nothing to read
-
     push hl
     push de
     push bc
@@ -75,6 +66,21 @@ _DSKIO_OK_UNIT:
     pop hl
     ld a,12
     ret c   ;No device is connected
+
+    call WK_GET_STORAGE_DEV_FLAGS
+    jp nz,_DSKIO_IMPL_STDEV
+
+
+    ;=== DSKIO for floppy disk drives ===
+
+    ld a,b
+    pop bc
+    rrc c   ;Now C:7 = 0 to read, 1 to write
+    ld b,a
+
+    ;ld a,b
+    or a
+    ret z   ;Nothing to read
 
     push hl
     push de
@@ -118,22 +124,8 @@ _DSKIO_OK_CMD:
     ;* Check if we can transfer sectors directly or we need to transfer one by one.
     ;* We'll start with one by one transfer if page 1 is involved in the transfer.
 
-    bit 7,d
-    jr nz,_DSKIO_DIRECT_TRANSFER    ;Transfer starts at >= 8000h
-    bit 6,d
-    jr nz,_DSKIO_ONE_BY_ONE         ;Transfer starts at >= 4000h and <8000h
-    push de
-    push bc
-    ex de,hl
-    sla b
-    ld c,0  ;BC = Sectors * 512
-    add hl,bc
-    dec hl  ;Now HL = Last transfer address
-    pop bc
-    pop de
-    ld a,h
-    cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
-    jr nc,_DSKIO_ONE_BY_ONE
+    call CHECK_XFER_IS_NEEDED
+    jr c,_DSKIO_ONE_BY_ONE
 
     ;>>> Direct transfer
     ;    We transfer sectors directly from/to the source/target address,
@@ -337,6 +329,356 @@ CALL_XFER:
     ret
 
 
+    ;=== DSKIO for storage devices (mounted file) ===
+
+_DSKIO_IMPL_STDEV:
+    ; Wait for VDP interrupt.
+	; This introduces a small delay that is required by some games.
+
+    push af
+	di
+	ld	a,2
+	out	(99h),a
+	ld	a,8fh
+	out	(99h),a
+WVDP:
+	in	a,(99h)
+	and	81h
+	dec	a
+	jr	z,WVDP
+	xor	a
+	out	(99h),a
+	ld	a,8fh
+	out	(99h),a
+    pop af
+
+    call MAYBE_CHANGE_DSK
+
+    push hl
+    push bc
+
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 0FBh    ;reset  "Disk changed" flag
+    call WK_SET_STORAGE_DEV_FLAGS
+
+    ld h,0
+    ld l,d
+    ld d,e
+    ld e,0
+    sla d
+    rl l
+    rl h    ;HLDE = DE*512
+    call HWF_SEEK_FILE
+
+    pop bc
+    pop hl
+    ld c,b
+    ld b,0
+    or a
+    jr z,_DSKIO_IMPL_STDEV_SEEKOK
+
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 81h
+    cp 80h
+    jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
+
+    pop hl  ;Discard input AF
+    dec a
+    ld a,8  ;Record not found
+    scf
+    ret z
+    ld a,12 ;Other error
+    ret
+
+_DSKIO_IMPL_STDEV_SEEKOK:
+    ld b,c
+
+    call DSK_TEST_CAPS_LIT_WK
+    jr nz,_DSKIO_IMPL_STDEV_GO_CAPS
+    pop af
+    jr _DSKIO_IMPL_STDEV_GO
+
+_DSKIO_IMPL_STDEV_GO_CAPS:
+    pop af
+    call CAPSON
+    call _DSKIO_IMPL_STDEV_GO
+    call CAPSOFF
+    ret
+
+_DSKIO_IMPL_STDEV_GO:
+    jp c,_DSKIO_IMPL_STDEW_WRITE
+
+
+    ;=== DSKIO for storage devices - READ ===
+
+_DSKIO_IMPL_STDEW_READ:
+    ex de,hl
+    call CHECK_XFER_IS_NEEDED
+    ex de,hl
+    jr c,_DSKIO_R_STDEV_XFER
+
+    ;* Direct transfer
+
+_DSKIO_R_STDEV_DIRECT:
+    sla b
+    ld c,0  ;BC = B*512
+    call HWF_READ_FILE
+    srl b  ;B = BC/512
+
+    or a
+    ld a,12
+    scf
+    ret nz
+    
+    xor a
+    ret
+
+    ;* Transfer using XFER
+
+_DSKIO_R_STDEV_XFER:
+    ld c,0
+_DSKIO_R_STDEV_XFER_LOOP:
+    push bc ;B=Sectors left, C=Sectors transferred
+    push hl ;Dest address
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call HWF_READ_FILE
+    or a
+    jr nz,_DSKIO_IMPL_STDEV_XFER_ERR
+    ld a,b
+    cp 2
+    jr c,_DSKIO_IMPL_STDEV_XFER_ERR ;Error if less than 1 sector transferred
+
+    pop de
+    push de
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call CALL_XFER
+
+    pop hl
+    pop bc
+    inc c
+    inc h
+    inc h   ;HL=HL+512
+    djnz _DSKIO_R_STDEV_XFER_LOOP
+
+    ld b,c
+    xor a
+    ret
+
+
+    ;=== DSKIO for storage devices - WRITE ===
+
+_DSKIO_IMPL_STDEW_WRITE:
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 2   ;Read only?
+    ld a,0
+    scf
+    ret nz
+
+    ex de,hl
+    call CHECK_XFER_IS_NEEDED
+    ex de,hl
+    jr c,_DSKIO_W_STDEV_XFER
+
+    ;* Direct transfer
+
+_DSKIO_W_STDEV_DIRECT:
+    sla b
+    ld c,0  ;BC = B*512
+    call HWF_WRITE_FILE
+    srl b  ;B = BC/512
+
+    or a
+    ld a,12
+    scf
+    ret nz
+    
+    xor a
+    ret
+
+    ;* Transfer using XFER
+
+_DSKIO_W_STDEV_XFER:
+    ld c,0
+_DSKIO_W_STDEV_XFER_LOOP:
+    push bc ;B=Sectors left, C=Sectors transferred
+    push hl ;Src address
+
+    ld de,(SECBUF)
+    ld bc,512
+    call CALL_XFER
+
+    ld hl,(SECBUF)
+    ld bc,512
+    call HWF_WRITE_FILE
+    or a
+    jr nz,_DSKIO_IMPL_STDEV_XFER_ERR
+    ld a,b
+    cp 2
+    jr c,_DSKIO_IMPL_STDEV_XFER_ERR ;Error if less than 1 sector transferred
+
+    pop hl
+    pop bc
+    inc c
+    inc h
+    inc h   ;HL=HL+512
+    djnz _DSKIO_W_STDEV_XFER_LOOP
+
+    ld b,c
+    xor a
+    ret
+
+
+    ;=== DSKIO for storage devices - common ===
+
+_DSKIO_IMPL_STDEV_XFER_ERR:
+    pop hl
+    pop bc
+    ld b,c
+    ld a,12
+    scf
+    ret
+
+_DSKIO_IMPL_POPAF_RET_ERR:
+    pop af
+    ld b,0
+    ld a,2
+    scf
+    ret
+
+
+    ;-- Check if transfer can be done directly or if we need to use XFER
+    ;   (XFER will be needed if page 1 is involved in the transfer).
+    ;
+    ;   Input:  DE = Transfer address
+    ;           B  = How many sectors to transfer
+    ;   Output: Cy = 0 if direct transfer is possible
+    ;                1 if XFER is needed
+
+CHECK_XFER_IS_NEEDED:
+    ld a,(XFER)
+    cp 0C9h
+    ret z   ;Sanity check: we can't use XFER if it isn't enabled
+
+    bit 7,d
+    scf
+    ccf
+    ret nz    ;Transfer starts at >= 8000h, so direct ok
+    bit 6,d
+    scf
+    ret nz    ;Transfer starts at >= 4000h and <8000h, so XFER needed
+    push de
+    push bc
+    ex de,hl
+    sla b
+    ld c,0  ;BC = Sectors * 512
+    add hl,bc
+    dec hl  ;Now HL = Last transfer address
+    pop bc
+    pop de
+    ld a,h
+    cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
+    ccf
+    ret
+
+
+    ;=== Handle possible disk image file change ===
+
+MAYBE_CHANGE_DSK:
+    push af
+	push	hl
+	push	de
+	push	bc
+	push	ix
+	push	iy
+    ld iy,-65
+    add iy,sp
+    ld sp,iy
+	call	_MAYBE_CHANGE_DSK
+    ld iy,65
+    add iy,sp
+    ld sp,iy
+	pop	iy
+	pop	ix
+	pop	bc
+	pop	de
+	pop	hl
+    pop af
+	ret
+
+_MAYBE_CHANGE_DSK:
+    push iy
+    call GETCURKEY
+    pop iy
+    or a
+    ret z
+    cp 0FFh
+    jr nz,CHGF3
+
+    call CAPSON
+    call WAIT_KEY_RELEASE ;CODE/KANA pressed: wait for other keys to release...
+
+CHGWA2:
+    call CAPSON
+CHGWA22:
+    push iy
+	call	GETCURKEY	;...then to be pressed again.
+    pop iy
+	or	a
+	jr	z,CHGWA22
+
+    cp 0FFh      ;User changed his mind and pressed GRAPH 
+    jr nz,CHGF3
+
+    call WAIT_KEY_RELEASE
+    call CAPSOFF
+    ret
+
+CHGF3:
+	ld	c,a
+	call	CAPSOFF
+
+    ;--- The key with index C is pressed
+
+    push bc
+    push iy
+    pop hl
+    call DSK_GET_CURDIR
+    pop bc
+
+    ld a,c
+    dec a
+    push iy
+    pop hl
+    push hl
+    call HWF_FIND_NTH_FILE
+    pop hl
+    or a
+    jr nz,CHGWA2
+
+    ld de,12
+    add hl,de
+    ex de,hl
+    push iy
+    pop hl
+    push de
+    call BM_GENERATE_FILENAME
+    pop hl
+
+    xor a
+    call DSK_MOUNT
+    or a
+    jr nz,CHGWA2
+
+CHGF_END:
+    call WAIT_KEY_RELEASE
+    call MYKILBUF
+    call CAPSOFF
+    ret
+
 ; -----------------------------------------------------------------------------
 ; DSKCHG
 ; -----------------------------------------------------------------------------
@@ -371,6 +713,11 @@ DSKCHG_IMPL:
     ld a,12
     ret c   ;No device is connected
 
+    push af
+    call WK_GET_STORAGE_DEV_FLAGS
+    jp nz,_DSKCHG_IMPL_STDEV
+    pop af
+
     push hl
     call TEST_DISK
     pop hl
@@ -384,6 +731,25 @@ DSKCHG_IMPL:
     call GETDPB_IMPL
     pop bc
     xor a
+    ret
+
+_DSKCHG_IMPL_STDEV:
+    and 81h
+    cp 80h
+    jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
+
+    call MAYBE_CHANGE_DSK
+
+    pop af
+    
+    call WK_GET_STORAGE_DEV_FLAGS
+    and 4
+    ld a,0
+    ld b,1  ;Unchanged
+    ret z
+    call GETDPB_IMPL
+    xor a
+    ld b,0FFh   ;Changed
     ret
 
 

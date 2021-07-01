@@ -5,12 +5,56 @@
 ; and prints the device name or the appropriate error message.
 ; It is executed at boot time and by CALL USBRESET.
 
-
 VERBOSE_RESET:
+    push iy
+    ld iy,-36
+    add iy,sp
+    ld sp,iy
+    call _VERBOSE_RESET
+    ld iy,36
+    add iy,sp
+    ld sp,iy
+    pop iy
+    ret
+
+_VERBOSE_RESET:
+    xor a
+    call WK_SET_STORAGE_DEV_FLAGS
+
     call HW_TEST
     ld hl,NOHARD_S
     jp c,PRINT
 
+    push iy
+    pop hl
+    push hl
+    call HWF_MOUNT_DISK
+    jr c,_HW_RESET_NO_STOR
+
+    ld hl,STOR_FOUND_S
+    call PRINT
+    pop hl
+    ld b,0
+    ;Print the device name, collapsing multiple spaces to a single one
+_HW_RESET_PRINT:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,_HW_RESET_PRINT_END
+    cp ' '
+    jr nz,_HW_RESET_PRINT_GO
+    cp b
+    jr z,_HW_RESET_PRINT
+_HW_RESET_PRINT_GO:
+    ld b,a
+    call CHPUT
+    jr _HW_RESET_PRINT
+_HW_RESET_PRINT_END:
+    call DSK_INIT_WK_FOR_STORAGE_DEV
+    ret
+
+_HW_RESET_NO_STOR:
+    pop hl
     ld b,5
 _HW_RESET_TRY:
     push bc
@@ -213,8 +257,8 @@ PRINT_ERROR:
 ; Strings
 
 ROOKIE_S:
-	db "Rookie Drive FDD BIOS v1.0",13,10
-	db "(c) Konamiman 2018",13,10
+	db "Rookie Drive NestorBIOS v2.0",13,10
+	db "(c) Konamiman 2018,2021",13,10
 	db 13,10
     db "Initializing device...",13
 	db 0
@@ -242,3 +286,5 @@ DEVERR_S:
 ERR_INQUIRY_S:
     db  "ERROR querying the device name: ",0
 
+STOR_FOUND_S:
+    db "USB storage device found: ",0

@@ -27,6 +27,10 @@
 ; -----------------------------------------------------------------------------
 
 CHOICE_IMPL:
+    call WK_GET_STORAGE_DEV_FLAGS
+    ld hl,0
+    ret nz
+
     ld hl,CHOICE_S
     ret
 
@@ -48,6 +52,11 @@ DSKFMT_IMPL:
     ld c,a
     ld a,d
     call CHECK_SAME_DRIVE
+
+    call WK_GET_STORAGE_DEV_FLAGS
+    ld a,16
+    scf
+    ret nz
 
     push bc
     call DSKCHG_IMPL    ;To eat a possible "not ready" error reported by

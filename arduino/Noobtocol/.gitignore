@@ -1,5 +1,7 @@
 __vm/
 .vs/
+.vscode/
+build/
 *.user
 *.filters
 *.elf
