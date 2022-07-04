@@ -5,13 +5,29 @@
 ; USB operation routines, including the ones related to the CBI protocol.
 ; It also contains the code that detects if the connected device is a proper FDD
 ; and initializes the work area accordingly.
+;
+; Connecting a FDD via a hub is allowed since v2.1, useful when the MSX itself
+; can't provide enough power for it. A simplified approach to hub initializttion
+; and handling is taken:
+;
+; - Number of ports isn't checked, max 7 ports are assumed. If powering a port results
+;   in error, it is assumed that there are no more ports remaining.
+; - No actual check is done for a device being a attached to a given port.
+;   If resetting the port fails, it is assumed that there is no device in that port.
+; - Ports are powered one by one until one is found having an attached device,
+;   even if that device isn't an FDD.
+; - The change notification endpoint isn't used. If trying to accessing the device 
+;   (via hub or not) throws an error, a full reset and initialization is done again.
 
 
 USB_DEVICE_ADDRESS: equ 1
+HUB_DEVICE_ADDRESS: equ 2
 
 USB_CLASS_MASS: equ 8
 USB_SUBCLASS_CBI: equ 4
 USB_PROTO_WITH_INT_EP: equ 0
+
+USB_CLASS_HUB: equ 9
 
 
 ; -----------------------------------------------------------------------------
@@ -106,6 +122,7 @@ USB_INIT_DEV:
     ;--- Get 8 first bytes of device descriptor, grab max endpoint 0 packet size
 
     pop de
+_USB_INIT_DEV_RESTART:  ;Jumps here after hub init if hub is detected
     push de
 
     if HW_IMPL_GET_DEV_DESCR = 1
@@ -123,6 +140,14 @@ USB_INIT_DEV:
     pop ix
     or a
     jp nz,_USB_INIT_DEV_ERR
+
+    call WK_GET_MISC_FLAGS
+    and 1
+    jr nz,_USB_INIT_DONT_CHECK_HUB ;To prevent infinite loops in case of hub init error
+    ld a,(ix+4)
+    cp USB_CLASS_HUB
+    jp z,_USB_INIT_HUB_FOUND
+_USB_INIT_DONT_CHECK_HUB:
 
     ld a,(ix+7)
     push ix
@@ -358,16 +383,186 @@ _INIT_USB_SKIP_DESC:
     ret
 
 
+    ;>>> USB hub found!
+
+_USB_INIT_HUB_FOUND:
+
+    ld a,1
+    call WK_SET_MISC_FLAGS  ;Set "hub found" flag
+
+    ;--- Get configuration descriptor
+
+    push ix
+    pop de
+
+    if HW_IMPL_GET_CONFIG_DESCR = 1
+
+    xor a
+    call HW_GET_CONFIG_DESCR
+
+    else
+
+    ld hl,USB_CMD_GET_CONFIG_DESC
+    push ix
+    call USB_CONTROL_TRANSFER_0
+    pop ix
+
+    endif
+
+    or a
+    jp nz,_USB_HUB_INIT_END
+
+    ;--- Assign hub address
+
+    if HW_IMPL_SET_ADDRESS = 1
+
+    ld a,HUB_DEVICE_ADDRESS
+    call HW_SET_ADDRESS
+
+    else
+
+    ld hl,USB_CMD_SET_HUB_ADDRESS
+    ld de,0 ;No data will be actually transferred
+    push ix
+    call USB_CONTROL_TRANSFER_0
+    pop ix
+
+    endif
+
+    or a
+    jp nz,_USB_HUB_INIT_END
+
+    ;--- Set hub configuration
+
+    ld a,(ix+5) ;bConfigurationValue in the configuration descriptor
+
+    if HW_IMPL_SET_CONFIG = 1
+
+    ld b,a
+    ld a,HUB_DEVICE_ADDRESS
+    call HW_SET_CONFIG
+
+    else
+
+    push ix
+    pop de
+    ld hl,USB_CMD_SET_CONFIGURATION
+    ld bc,8
+    push de
+    ldir
+    pop hl
+
+    ld (ix+2),a ;wValue in the SET_CONFIGURATION command
+
+    ld de,0 ;No data will be actually transferred
+    ld a,HUB_DEVICE_ADDRESS
+    push ix
+    call _USB_CONTROL_TRANSFER_DO
+    pop ix
+
+    endif
+
+    or a
+    jp nz,_USB_HUB_INIT_END
+
+    ;--- For ports 1 to 7, attempt port power + port reset + get device descriptor
+
+    ld b,1
+_USB_HUB_PORT_LOOP:
+
+    push bc
+
+    ;* Power port
+
+    ld hl,USB_CMD_HUB_PORT_POWER
+    pop af
+    push af
+
+    call _USB_DO_HUB_CMD
+    jp nz,_USB_HUB_INIT_ERR ;An error here means that the port doesn't exist
+
+    ;* Reset port
+
+    ld hl,USB_CMD_HUB_PORT_RESET
+    pop af
+    push af
+    call _USB_DO_HUB_CMD
+    jp nz,_USB_HUB_INIT_ERR ;An error here means that the port doesn't exist
+
+    halt
+    halt
+    halt    ;Max reset time for a USB hub port is 20ms, that'll be enough
+
+    ;* Try to get the device descriptor of the actual device,
+    ;  just to see if there's a device at all
+
+    ld hl,USB_CMD_GET_DEV_DESC_8
+    push ix
+    pop de
+    xor a
+    ld b,8
+    push ix
+    call HW_CONTROL_TRANSFER
+    pop ix
+
+    ;* Device found? Then let's go and resume normal processing
+
+    or a
+    jr nz,_USB_HUB_NEXT_PORT
+
+    pop af
+    jp _USB_HUB_INIT_END
+
+    ;--- Next port, if any
+
+_USB_HUB_NEXT_PORT:
+    pop af
+    inc a
+    cp 8
+    ld b,a
+    jp c,_USB_HUB_PORT_LOOP
+
+_USB_HUB_INIT_END:
+    push ix
+    pop de
+    jp _USB_INIT_DEV_RESTART
+
+
+    ;--- Execute a dataless command for the hub
+    ;    In: HL=Command address, IX=Buffer address, A=port number (for +4 in command)
+    ;    Out: Z if ok, NZ if error
+
+_USB_DO_HUB_CMD:
+    push ix
+    pop de
+    ld bc,8
+    ldir
+    ld (ix+4),a ;Set the port number in the command
+
+    push ix
+    pop hl
+    ld de,0 ;No data will be actually transferred
+    ld a,HUB_DEVICE_ADDRESS
+    ld b,8
+    push ix
+    call HW_CONTROL_TRANSFER
+    pop ix
+
+    or a
+    ret
+
+_USB_HUB_INIT_ERR:
+    pop bc
+    jr _USB_HUB_INIT_END
+
+
+
 ; -----------------------------------------------------------------------------
 ; USB commands used for initialization
 ; -----------------------------------------------------------------------------
 
-    if HW_IMPL_GET_DEV_DESCR = 0
-
 USB_CMD_GET_DEV_DESC_8:
     db 80h, 6, 0, 1, 0, 0, 8, 0
-
-    endif
 
     if HW_IMPL_GET_CONFIG_DESCR = 0
 
@@ -377,7 +572,10 @@ USB_CMD_GET_CONFIG_DESC:
     endif
 
 USB_CMD_SET_ADDRESS:
-    db 0, 5, 1, 0, 0, 0, 0, 0
+    db 0, 5, USB_DEVICE_ADDRESS, 0, 0, 0, 0, 0
+
+USB_CMD_SET_HUB_ADDRESS:
+    db 0, 5, HUB_DEVICE_ADDRESS, 0, 0, 0, 0, 0
 
     if HW_IMPL_SET_CONFIG = 0
 
@@ -385,6 +583,12 @@ USB_CMD_SET_CONFIGURATION:
     db 0, 9, 255, 0, 0, 0, 0, 0 ;Needs actual configuration value in 3rd byte
 
     endif
+
+USB_CMD_HUB_PORT_POWER:
+    db  00100011b, 3, 8, 0, 1, 0, 0, 0
+
+USB_CMD_HUB_PORT_RESET:
+    db  00100011b, 3, 4, 0, 1, 0, 0, 0
 
 
 ; -----------------------------------------------------------------------------

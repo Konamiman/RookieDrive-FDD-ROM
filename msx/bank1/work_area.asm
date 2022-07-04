@@ -11,7 +11,9 @@
 ; +1: Bulk IN endpoint parameters
 ; +2: Interrupt IN endpoint parameters
 ; +3: Interface number for the ADSC setup packet
-; +4: Last relative drive accessed
+; +4: Bits 0-3: Last relative drive accessed
+;     Bits 4-7: Misc flags
+;               0: set if USB hub found
 ; +5: Last USB error (for CALL USBERROR)
 ; +6: Last ASC (for CALL USBERROR)
 ; +7: Last ASCQ (for CALL USBERROR)
@@ -96,6 +98,9 @@ WK_ZERO:
     ld (ix+5),0
     ld (ix+6),0
     ld (ix+7),0
+    ld a,(ix+4)
+    and 0Fh
+    ld (ix+4),a
     pop ix
     ret
 
@@ -286,12 +291,17 @@ WK_GET_ERROR:
 ; Input: A = relative drive number
 
 WK_SET_LAST_REL_DRIVE:
+    push bc
     push ix
     push af
     call _WK_GETWRK
-    pop af
+    ld a,(ix+4)
+    and 11110000b
+    pop bc
+    or b
     ld (ix+4),a
     pop ix
+    pop bc
     ret
 
 
@@ -304,7 +314,52 @@ WK_GET_LAST_REL_DRIVE:
     push ix
     call _WK_GETWRK
     ld a,(ix+4)
+    and 00001111b
     pop ix
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Store the misc flags (lower four bits only)
+;
+; Input: A = misc flags
+
+WK_SET_MISC_FLAGS:
+    push bc
+    push ix
+    rlca
+    rlca
+    rlca
+    rlca
+    and 11110000b
+    push af
+    call _WK_GETWRK
+    ld a,(ix+4)
+    and 00001111b
+    pop bc
+    or b
+    ld (ix+4),a
+    pop ix
+    pop bc
+    ret
+
+
+; -----------------------------------------------------------------------------
+; Retrieve the misc flags
+;
+; Input: A = misc flags (in low nibble)
+
+WK_GET_MISC_FLAGS:
+    push ix
+    call _WK_GETWRK
+    ld a,(ix+4)
+    pop ix
+    and 11110000b
+    ret z
+    rrca
+    rrca
+    rrca
+    rrca
     ret
 
 

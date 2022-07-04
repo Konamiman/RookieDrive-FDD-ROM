@@ -157,6 +157,9 @@ OEM_S_HELP:
 OEMC_USBRESET:
     ld ix,VERBOSE_RESET
     call OEM_CALL_BANK_1
+    ld ix,WK_GET_STORAGE_DEV_FLAGS
+    call OEM_CALL_BANK_1
+    jp z,OEM_END
     ld a,1
     ld ix,DSK_DO_BOOT_PROC
     call OEM_CALL_BANK_1

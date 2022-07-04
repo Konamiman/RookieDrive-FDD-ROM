@@ -6,6 +6,14 @@ This project implements a standard MSX-DOS 1 DiskROM that allows using standard 
 
 Since version 2.0 this ROM also supports working with disk image files contained in standard USB storage devices such as pendrives or SD card readers. The "disk image mode" will activate automatically whenever a standard USB storage device is connected to the USB port; if a floppy disk drive is connected then the "floppy disk mode" (the only mode available in older versions of the ROM) will activate instead. See [the documentation about the disk image mode](DISK_IMAGE_MODE.md) for details.
 
+Since version 2.1 using a USB floppy disk drive via an USB hub is supported. Some MSX computers can't provide enough power for floppy disk drives to be used via direct connection to the USB port of the Rookie Drive, in these cases using a self-powered USB hub (a hub with its own power adapter) should fix the issue. Please note:
+
+- Hub support is for floppy disk drives only. Storage devices containing disk image files still need to be connected directly to the USB port of the Rookie Drive.
+- Always use a self-powered hub. Don't use a bus-powered hub (a hub without power adapter) since that would provide even less power than the MSX itself.
+- Don't connect other devices to the hub together with the floppy disk drive. The ROM code will stop scanning ports as soon as it finds one with a device attached to it, regardless of the type of the device.
+  - This includes connecting more than one floppy disk drive to the hub. That might be supported in a future version of the ROM but we aren't there yet.
+- If the hub has more than 7 ports, only the first 7 will be scanned for devices.
+
 ## Compiling
 
 To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adjust the configuration flags as desired in [the config.asm file](/msx/config.asm) and run:
@@ -81,8 +89,6 @@ As for the ROM mapper implemented by your hardware, if it's DOS 2/ASCII16 you do
 
 ## Known issues
 
-This DiskROM doesn't work on those MSX computers which have power source that is too "weak" to properly power USB floppy disk drives. This might be solved in a future version by adding support for self-powered USB hubs.
-
 Some devices will fail to initialize with "Timeout" error when the computer is reset. The workaround is to power off and on the computer, or unplug and plug again the device; sometimes trying CALL USBRESET a few times will work as well. 
 
 ## Disclaimer!
@@ -90,6 +96,8 @@ Some devices will fail to initialize with "Timeout" error when the computer is r
 We can't guarantee that this DiskROM will work as expected with any existing USB FDD. Unfortunately, many models violate the existing protocols and specifications in diverse and creative ways, from requiring UFI commands to be sent in a particular order when they shouldn't, to outright refusing to handle 720K disks. Six different FDD devices have been used for testing while developing this project, and in the end five of them work with the resulting DiskROM. One of these five can't handle 720K disks.
 
 Of the tested devices, the one that seems to be working best is the **Sony MPF82E**, it even seems capable of reading single sided disks.
+
+Similarly, we can't guarantee that all the USB hubs will work.
 
 ## Last but not least...
 
