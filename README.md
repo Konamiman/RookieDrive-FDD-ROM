@@ -22,6 +22,8 @@ To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adj
 
 Then burn `rookiefdd.rom` in your Rookie Drive and you're all set.
 
+Alternatively, under Linux and WSL you can use the `build.sh` script to generate all the possible variants (with/without inverted CTRL key, disabling other kernels by default, and using the alternative Z80 ports) inside a `bin` directory.
+
 ## Extra features
 
 This ROM adds a few extra features to what a standard DiskROM offers, some of them depend on the variant used.

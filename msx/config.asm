@@ -20,17 +20,16 @@ INVERT_CTRL_KEY: equ 0
 ;GRAPH is pressed at boot time.
 DISABLE_OTHERS_BY_DEFAULT: equ 0
 
-;Implement the "panic button":
-;pressing CAPS+ESC will abort the current USB operation
-;and reset the device
-IMPLEMENT_PANIC_BUTTON: equ 1
-
 ;Use the alternative set of Z80 ports for accessing the CH376,
 ;if you want to use two Rookie Drives in the same computer
 ;one of them must use the normal ports and the other one
 ;must use the alternative ports
 USE_ALTERNATIVE_PORTS: equ 0
 
+;Implement the "panic button":
+;pressing CAPS+ESC will abort the current USB operation
+;and reset the device
+IMPLEMENT_PANIC_BUTTON: equ 1
 
 ; -----------------------------------------------------------------------------
 ; Debugging switches
