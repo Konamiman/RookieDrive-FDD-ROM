@@ -20,6 +20,7 @@ VERBOSE_RESET:
 _VERBOSE_RESET:
     xor a
     call WK_SET_STORAGE_DEV_FLAGS
+    call WK_SET_MISC_FLAGS
 
     call HW_TEST
     ld hl,NOHARD_S
@@ -72,6 +73,8 @@ _HW_RESET_TRY_OK:
     ;Experiments with hubs, please ignore
     if 0
 
+    ld hl,HUB_FOUND_S
+    call PRINT
     ld a,2
     call HW_SET_ADDRESS
     ld a,2
@@ -82,11 +85,26 @@ _HW_RESET_TRY_OK:
     ld a,2
     ld b,64
     call HW_CONTROL_TRANSFER
+    add "0"
+    call CHPUT
     ld hl,CMD_PORT_RESET
     ld de,0
     ld a,2
     ld b,64
     call HW_CONTROL_TRANSFER
+    add "0"
+    call CHPUT
+
+    halt
+    halt
+    halt
+    halt
+    halt
+
+    xor a
+    call HW_GET_DEV_DESCR
+    add "0"
+    call CHPUT
     jr HUBDONE
 
 CMD_PORT_POWER:
@@ -110,6 +128,13 @@ _TRY_USB_INIT_DEV:
     ld hl,DEVERR_S
     jp PRINT_ERROR
 _TRY_USB_INIT_DEV_OK:
+
+    push af
+    call WK_GET_MISC_FLAGS
+    and 1
+    ld hl,HUB_FOUND_S
+    call nz,PRINT
+    pop af
 
     or a
     ld hl,NO_CBI_DEV_S
@@ -257,8 +282,8 @@ PRINT_ERROR:
 ; Strings
 
 ROOKIE_S:
-	db "Rookie Drive NestorBIOS v2.0",13,10
-	db "(c) Konamiman 2018,2021",13,10
+	db "Rookie Drive NestorBIOS v2.1",13,10
+	db "(c) Konamiman 2018-2022",13,10
 	db 13,10
     db "Initializing device...",13
 	db 0
@@ -288,3 +313,6 @@ ERR_INQUIRY_S:
 
 STOR_FOUND_S:
     db "USB storage device found: ",0
+
+HUB_FOUND_S:
+    db "USB hub found",27,"K",13,10,0

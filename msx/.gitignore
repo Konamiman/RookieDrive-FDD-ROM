@@ -1,6 +1,9 @@
 sandbox/
 .vscode/
+bin/
 *.lst
 *.out
 *.rom
 *.sym
+temp.*
+*.bak
