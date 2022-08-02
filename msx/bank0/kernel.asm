@@ -8656,6 +8656,7 @@ SNSMAT_AND_INVERT_CTRL:
     ;The following patches allows us to become the only disk driver when SHIFT is pressed
     ;(or, if DISABLE_OTHERS_BY_DEFAULT=1, when GRAPH is not pressed).
     ;Inspired by the "hostile takeover" mode in https://github.com/joyrex2001/dsk2rom
+    ;Also, since v2.1 the ROM initialization can be cancelled by pressing DEL during boot.
 
     ;------------------------------------------------------------------------------
 
@@ -8665,7 +8666,15 @@ SNSMAT_AND_INVERT_CTRL:
     ;        3 to abort init (and beep)
 
 DO_CHECK_CAN_INIT:
-	call	INIHRD			; initialize diskhardware
+    ;Disable ROM if DEL is pressed at boot time
+
+    ld a,8
+    call SNSMAT
+    and 00001000b
+    ld a,2
+    ret z 
+
+    call INIHRD			; initialize diskhardware
     call MUST_DISABLE_OTHERS
     jr nc,_DO_CHECK_CAN_INIT_2
 
