@@ -20,9 +20,13 @@ To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adj
 
     sjasm rookiefdd.asm rookiefdd.rom
 
-Then burn `rookiefdd.rom` in your Rookie Drive and you're all set.
+Then flash `rookiefdd.rom` in your Rookie Drive and you're all set.
 
 Alternatively, under Linux and WSL you can use the `build.sh` script to generate all the possible variants (with/without inverted CTRL key, disabling other kernels by default, and using the alternative Z80 ports) inside a `bin` directory.
+
+## Flashing
+
+To flash a ROM file in your Rookie Drive you need to boot your MSX with the existing ROM disabled. Since ROM version 2.1 you can force the ROM to disable itself by presing the DEL key while booting, you'll need to do this if your Rookie Drive cartridge doesn't provide a physical switch to disable it.
 
 ## Extra features
 

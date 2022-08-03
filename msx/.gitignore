@@ -7,3 +7,5 @@ bin/
 *.sym
 temp.*
 *.bak
+bin/
+
