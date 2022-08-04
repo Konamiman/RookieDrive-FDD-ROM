@@ -8675,6 +8675,9 @@ DO_CHECK_CAN_INIT:
     ret z 
 
     call INIHRD			; initialize diskhardware
+    ld a,2
+    ret c
+
     call MUST_DISABLE_OTHERS
     jr nc,_DO_CHECK_CAN_INIT_2
 
