@@ -14,14 +14,25 @@
 ; INIHRD
 ; -----------------------------------------------------------------------------
 ; Input:	None
-; Output:	None
+; Output:	Cy=0 if USB hardware is operational, 1 if not
 ; Changed:	AF,BC,DE,HL,IX,IY may be affected
 ; -----------------------------------------------------------------------------
 
 INIHRD_IMPL:
     call INITXT
-	ld hl,ROOKIE_S
-	jp PRINT
+    ld hl,ROOKIE_S
+    call PRINT
+
+    call HW_TEST
+    ret nc
+
+    ld hl,NOHARD_S
+    call PRINT
+    ld b,60
+    call DELAY_B
+
+    scf
+    ret
 
 
 ; -----------------------------------------------------------------------------
@@ -46,10 +57,13 @@ INIENV_IMPL:
 
     call VERBOSE_RESET
     ld b,30
-DELAY_AFTER_PRINT:
-    halt
-    djnz DELAY_AFTER_PRINT
+    call DELAY_B
     call WK_GET_STORAGE_DEV_FLAGS
     ret z
     xor a
     jp DSK_DO_BOOT_PROC
+
+DELAY_B:
+    halt
+    djnz DELAY_B
+    ret
