@@ -7,3 +7,4 @@ bin/
 *.sym
 temp.*
 *.bak
+*.DSK

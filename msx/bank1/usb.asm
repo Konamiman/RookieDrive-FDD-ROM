@@ -41,6 +41,11 @@ USB_CLASS_HUB: equ 9
 ;              1 if not
 
 USB_CHECK_DEV_CHANGE:
+    if USE_ROM_AS_DISK = 1
+    or a
+    ret
+    endif
+
     call HW_DEV_CHANGE
     jr c,_USB_CHECK_DEV_CHANGE_NO_DEV   ;Device present, but bus reset failed
 
@@ -104,6 +109,11 @@ _USB_CHECK_DEV_CHANGE_NO_DEV:
 USB_INIT_DEV_STACK_SPACE: equ 64
 
 USB_INIT_DEV:
+    if USE_ROM_AS_DISK = 1
+    xor a
+    ret
+    endif
+
     ld ix,-USB_INIT_DEV_STACK_SPACE
     add ix,sp
     ld sp,ix
@@ -489,9 +499,13 @@ _USB_HUB_PORT_LOOP:
     call _USB_DO_HUB_CMD
     jp nz,_USB_HUB_INIT_ERR ;An error here means that the port doesn't exist
 
-    halt
-    halt
-    halt    ;Max reset time for a USB hub port is 20ms, that'll be enough
+    ;Max reset time for a USB hub port is 20ms
+    ld bc,2000
+_USB_HUB_WAIT_RESET:
+    dec bc
+    ld a,b
+    or c
+    jr nz,_USB_HUB_WAIT_RESET
 
     ;* Try to get the device descriptor of the actual device,
     ;  just to see if there's a device at all
@@ -734,7 +748,7 @@ _USB_DATA_IN_OK:
 
 
 ; -----------------------------------------------------------------------------
-; USB_DATA_OUT_TRANSFER: Perform a USB data IN transfer
+; USB_DATA_OUT_TRANSFER: Perform a USB data OUT transfer
 ;
 ; This routine differs from HW_DATA_OUT_TRANSFER in that:
 ;
@@ -824,12 +838,11 @@ USB_CLEAR_ENDPOINT_HALT:
     ld sp,ix
     push hl ;Was A
 
-    ex de,hl
-    push de
+    push ix
+    pop de
     ld hl,USB_CMD_CLEAR_ENDPOINT_HALT
     ld bc,8
     ldir
-    pop ix
     ld b,a
     call WK_GET_EP_NUMBER
     ld (ix+4),a
@@ -1008,6 +1021,11 @@ _USB_ECBIR_POPALL_END_NZ:
 USB_EXECUTE_CBI_STACK_SPACE: equ 8+18
 
 USB_EXECUTE_CBI:
+    if USE_ROM_AS_DISK = 1
+    ld a,1
+    ret
+    endif
+
     push af
     pop iy
     ld ix,-USB_EXECUTE_CBI_STACK_SPACE
@@ -1037,7 +1055,7 @@ USB_EXECUTE_CBI:
     pop ix
     cp USB_ERR_STALL
     ld de,0 ;ASC+ASCQ in case we return now
-    jr nz,_USB_EXE_CBI_END  ;Return on succes or USB error other than stall
+    jr nz,_USB_EXE_CBI_END  ;Return on success or USB error other than stall
 
 _USB_EXECUTE_REQUEST_SENSE:
     push bc ;Data actually transferred

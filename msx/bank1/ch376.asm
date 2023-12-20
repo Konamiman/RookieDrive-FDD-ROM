@@ -165,7 +165,7 @@ HW_RESET:
 
     ;Clear the CH376 data buffer in case a reset was made
     ;while it was in the middle of a data transfer operation
-    ;ld b,64
+    ld b,64
 _HW_RESET_CLEAR_DATA_BUF:
     in a,(CH_DATA_PORT)
     djnz _HW_RESET_CLEAR_DATA_BUF
@@ -1500,12 +1500,15 @@ CH_SET_USB_MODE:
     ld a,b
     out (CH_DATA_PORT),a
 
-    ld b,255
+    ld bc,1000
 _CH_WAIT_USB_MODE:
     in a,(CH_DATA_PORT)
     cp CH_ST_RET_SUCCESS
     jp z,CH_CONFIGURE_RETRIES
-    djnz _CH_WAIT_USB_MODE
+    dec bc
+    ld a,b
+    or c
+    jr nz,_CH_WAIT_USB_MODE
     scf
     ret
 

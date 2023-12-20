@@ -69,3 +69,6 @@ DEFDPB_1:
     ds 7FFFh-$,0FFh
     db ROM_BANK_1
 
+    if USE_ROM_AS_DISK = 1
+    incbin "game.dsk"
+    endif

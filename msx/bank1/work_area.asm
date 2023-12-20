@@ -14,6 +14,8 @@
 ; +4: Bits 0-3: Last relative drive accessed
 ;     Bits 4-7: Misc flags
 ;               0: set if USB hub found
+;               1: set if force 1DD mode active
+;               2: set if force 2DD mode active
 ; +5: Last USB error (for CALL USBERROR)
 ; +6: Last ASC (for CALL USBERROR)
 ; +7: Last ASCQ (for CALL USBERROR)

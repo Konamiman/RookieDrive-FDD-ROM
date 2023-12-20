@@ -71,3 +71,10 @@ USE_ASCII8_ROM_MAPPER: equ 0
 ;Note that these refer to 16K banks, even in the case of using the ASCII8 mapper.
 ROM_BANK_0: equ 0
 ROM_BANK_1: equ 1
+
+;Enable this to use a disk image file simulating a real floppy disk drive,
+;useful for debugging purposes.
+;If this is enabled, the path of the disk image file needs to be set
+;in rookiefdd.asm, right after the "if USE_ROM_AS_DISK = 1".
+;Also if this is enabled the only supported mapper is ASCII 8.
+USE_ROM_AS_DISK: equ 0

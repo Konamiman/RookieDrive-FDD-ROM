@@ -22,6 +22,21 @@ _VERBOSE_RESET:
     call WK_SET_STORAGE_DEV_FLAGS
     call WK_SET_MISC_FLAGS
 
+    if 0
+    ld b,64
+kk:
+    in a,(CH_DATA_PORT)
+    djnz kk
+    ld a,CH_CMD_RESET_ALL
+    out (CH_COMMAND_PORT),a
+    ld bc,1000
+kk2:
+    dec bc
+    ld a,b
+    or c
+    jr nz,kk2
+    endif
+
     call HW_TEST
     ld hl,NOHARD_S
     jp c,PRINT
@@ -69,51 +84,6 @@ _HW_RESET_TRY_OK:
     inc a
     ld hl,NODEV_S
     jp z,PRINT
-
-    ;Experiments with hubs, please ignore
-    if 0
-
-    ld hl,HUB_FOUND_S
-    call PRINT
-    ld a,2
-    call HW_SET_ADDRESS
-    ld a,2
-    ld b,1
-    call HW_SET_CONFIG
-    ld hl,CMD_PORT_POWER
-    ld de,0
-    ld a,2
-    ld b,64
-    call HW_CONTROL_TRANSFER
-    add "0"
-    call CHPUT
-    ld hl,CMD_PORT_RESET
-    ld de,0
-    ld a,2
-    ld b,64
-    call HW_CONTROL_TRANSFER
-    add "0"
-    call CHPUT
-
-    halt
-    halt
-    halt
-    halt
-    halt
-
-    xor a
-    call HW_GET_DEV_DESCR
-    add "0"
-    call CHPUT
-    jr HUBDONE
-
-CMD_PORT_POWER:
-    db  00100011b, 3, 8, 0, 1, 0, 0, 0
-CMD_PORT_RESET:
-    db  00100011b, 3, 4, 0, 1, 0, 0, 0
-HUBDONE:
-
-    endif
 
     ld b,5
 _TRY_USB_INIT_DEV:
@@ -285,7 +255,11 @@ ROOKIE_S:
 	db "Rookie Drive NestorBIOS v2.1",13,10
 	db "(c) Konamiman 2018-2022",13,10
 	db 13,10
+    if USE_ROM_AS_DISK = 1
+    db "Running in ROM disk mode",13
+    else
     db "Initializing device...",13
+    endif
 	db 0
 
 NOHARD_S:

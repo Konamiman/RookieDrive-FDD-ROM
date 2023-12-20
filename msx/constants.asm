@@ -16,6 +16,7 @@ KILBUF: equ 0156h
 
 CHRGTR: equ 4666h
 FRMEVL: equ 4C64h
+GETBYT: equ 521Ch
 FRMQNT: equ 542Fh
 FRESTR: equ 67D0h
 
