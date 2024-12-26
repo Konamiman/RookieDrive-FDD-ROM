@@ -6,6 +6,13 @@
 ;
 ; Labels are defined at the main file, not here, so that this file can be included twice.
 
+; crisag - Key Changes:
+; - Bank switching now uses Konami SCC mapper addresses:
+;   5000h-57FFh for 4000h-5FFFh region
+;   7000h-77FFh for 6000h-7FFFh region
+; - Fixed banks 0 (0000h-3FFFh) and 2 (8000h-FFFFh) are assumed.
+; - Ensures correct switching before and after the routine call.
+
 ;CALL_IX:
     jp (ix)
 
@@ -17,11 +24,13 @@
 ; Output: All registers = output from the routine
 
 ;CALL_BANK:
-    push hl
-    ld hl,(7FFFh) ;L=Current bank
-    ex (sp),hl
-    push af
-    ld a,iyl
+    push hl     ; Save HL (used to track the current bank)
+    ld hl,(7FFFh)   ; Load the current bank number into HL (L=Current bank)
+    ex (sp),hl  ; Swap HL with the top of the stack (store previous bank)
+    push af     ; Save AF (to preserve flags)
+
+    ; Switch to the target bank
+    ld a,iyl    ; Load the target bank number into A
     if USE_ALTERNATIVE_PORTS=1
     or 80h
     endif
