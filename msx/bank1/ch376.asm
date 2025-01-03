@@ -44,7 +44,7 @@ HW_IMPL_CONFIGURE_NAK_RETRY: equ 1
 
 ;--- CH376 port to Z80 ports mapping
 
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
 CH_DATA_PORT: equ 22h
 CH_COMMAND_PORT: equ 23h    
     else
@@ -120,7 +120,7 @@ CH_ST_RET_ABORT: equ 5Fh
 ; Output: Cy = 0 if hardware is operational, 1 if it's not
 
 HW_TEST:
-    if USE_FAKE_STORAGE_DEVICE=1
+    if USE_FAKE_STORAGE_DEVICE
     or a
     ret
     endif
@@ -165,7 +165,7 @@ HW_RESET:
 
     ;Clear the CH376 data buffer in case a reset was made
     ;while it was in the middle of a data transfer operation
-    ;ld b,64
+    ld b,64
 _HW_RESET_CLEAR_DATA_BUF:
     in a,(CH_DATA_PORT)
     djnz _HW_RESET_CLEAR_DATA_BUF
@@ -173,7 +173,7 @@ _HW_RESET_CLEAR_DATA_BUF:
     ld a,CH_CMD_RESET_ALL
     out (CH_COMMAND_PORT),a
 
-    if USING_ARDUINO_BOARD=1
+    if USING_ARDUINO_BOARD
     ld bc,1000
 _HW_RESET_WAIT:
     dec bc
@@ -543,7 +543,7 @@ _CH_DELAY_LOOP:
 ;              1: error, no device present or it's not a storage device
 
 HWF_MOUNT_DISK:
-    if USE_FAKE_STORAGE_DEVICE=1
+    if USE_FAKE_STORAGE_DEVICE
 
     ex de,hl
     ld hl,FAKE_DEV_NAME
@@ -604,13 +604,8 @@ FAKE_DEV_NAME:
 ;         HL = Pointer to terminator of file or directory name
 
 HWF_OPEN_FILE_DIR:
-    if USE_FAKE_STORAGE_DEVICE=1
+    if USE_FAKE_STORAGE_DEVICE
 
-    ;ld a,27
-    ;call CHPUT
-    ;ld a,'j'
-    ;call CHPUT
-    ;call PRINT
     xor a
     ret
 
@@ -767,7 +762,7 @@ HWF_DELETE_FILE:
 ;         BC = Number of filenames found
 
 HWF_ENUM_FILES:
-    if USE_FAKE_STORAGE_DEVICE = 1
+    if USE_FAKE_STORAGE_DEVICE
 
     push bc
     call _HWF_ENUM_FILES
@@ -1006,7 +1001,7 @@ _HWF_ENUM_FILES_END_2:
 ;             2: Other error
 
 HWF_SEEK_FILE:
-    if USE_FAKE_STORAGE_DEVICE = 1
+    if USE_FAKE_STORAGE_DEVICE
     xor a
     ret
     endif
@@ -1062,7 +1057,7 @@ _HWF_SEEK_FILE_CUR_POINTER:
 ;         HL = Address after last byte read
 
 HWF_READ_FILE:
-    if USE_FAKE_STORAGE_DEVICE=1
+    if USE_FAKE_STORAGE_DEVICE
     ld a,1
     ld bc,2048
     ret
@@ -1117,7 +1112,7 @@ _HWF_READ_FILE_END:
 ;         HL = Address after last byte written
 
 HWF_WRITE_FILE:
-    if USE_FAKE_STORAGE_DEVICE=1
+    if USE_FAKE_STORAGE_DEVICE
     ld a,1
     ld bc,2048
     ret
@@ -1379,7 +1374,7 @@ _CH_WAIT_WHILE_BUSY_LOOP:
 ; Output: A = Result of GET_STATUS (an USB error code)
 
 CH_WAIT_INT_AND_GET_RESULT:
-    if IMPLEMENT_PANIC_BUTTON=1
+    if IMPLEMENT_PANIC_BUTTON
     call PANIC_KEYS_PRESSED
     ld a,USB_ERR_PANIC_BUTTON_PRESSED
     ret z
@@ -1439,7 +1434,7 @@ _CH_NO_DEV_ERR:
     ret
 
 
-    if IMPLEMENT_PANIC_BUTTON=1
+    if IMPLEMENT_PANIC_BUTTON
 
     ;Return Z=1 if CAPS+ESC is pressed
 PANIC_KEYS_PRESSED:
@@ -1500,12 +1495,15 @@ CH_SET_USB_MODE:
     ld a,b
     out (CH_DATA_PORT),a
 
-    ld b,255
+    ld bc,1000
 _CH_WAIT_USB_MODE:
     in a,(CH_DATA_PORT)
     cp CH_ST_RET_SUCCESS
     jp z,CH_CONFIGURE_RETRIES
-    djnz _CH_WAIT_USB_MODE
+    dec bc
+    ld a,b
+    or c
+    jr nz,_CH_WAIT_USB_MODE
     scf
     ret
 

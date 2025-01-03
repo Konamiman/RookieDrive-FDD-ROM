@@ -1277,7 +1277,7 @@ _BM_INVERT_CHARS_LOOP:
     add hl,de   ;HL = Pointer to start of char definition
 
     ld b,8
-_BM_INVERT_ONE_CHAR_LOOP
+_BM_INVERT_ONE_CHAR_LOOP:
     ld a,(hl)
     cpl
     out (c),a
@@ -1750,7 +1750,7 @@ BM_OPEN_INITIAL_DIR:
     xor a
     ret
 
-_BM_MAIN_GETDIR_ERR
+_BM_MAIN_GETDIR_ERR:
     ld hl,BM_ERROR_INITIAL_S
     call BM_PRINT_STATUS_WAIT_KEY
     ld a,1

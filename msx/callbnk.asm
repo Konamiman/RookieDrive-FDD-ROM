@@ -22,10 +22,10 @@
     ex (sp),hl
     push af
     ld a,iyl
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
     or 80h
     endif
-    if USE_ASCII8_ROM_MAPPER=1
+    if USE_ASCII8_ROM_MAPPER
     sla a
     ld (ROM_BANK_SWITCH),a
     inc a
@@ -38,10 +38,10 @@
     ex (sp),hl  ;L=Previous bank
     push af
     ld a,l
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
     or 80h
     endif
-    if USE_ASCII8_ROM_MAPPER=1
+    if USE_ASCII8_ROM_MAPPER
     sla a
     ld (ROM_BANK_SWITCH),a
     inc a

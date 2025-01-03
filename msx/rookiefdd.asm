@@ -1,11 +1,13 @@
 ; Rookie Drive USB FDD BIOS
 ; By Konamiman, 2018
 ;
-; This is the main file. Assemble with:
-; sjasm rookiefdd.asm rookiefdd.rom
+; This is the main file, to be assembled with Nestor80 (https://github.com/Konamiman/Nestor80/):
 ;
-; See config.asm for customization options
-
+; N80 rookiefdd.asm rookiefdd.rom --direct-output-write
+;
+; There are configuration flags (see config.asm) that can be enabled by using --define-symbols, example:
+; 
+; N80 rookiefdd.asm rookiefdd.rom --direct-output-write --define-symbols INVERT_CTRL_KEY,DISABLE_OTHERS_BY_DEFAULT,IMPLEMENT_PANIC_BUTTON=0
 
 CALL_IX:   equ 7FD0h
 CALL_BANK: equ CALL_IX+2
@@ -69,3 +71,6 @@ DEFDPB_1:
     ds 7FFFh-$,0FFh
     db ROM_BANK_1
 
+    if USE_ROM_AS_DISK
+    incbin "GAME.DSK"
+    endif
