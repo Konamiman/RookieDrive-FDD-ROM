@@ -4314,13 +4314,13 @@ T570D:	defw	A40A7,A5445,A53A7,A546E,A5474,A5465,A5454,A5462
 	defw	A4720
 
 A576F:
-    if USE_ASCII8_ROM_MAPPER=1
+    if USE_ASCII8_ROM_MAPPER
     ld a,ROM_BANK_0*2+1
     ld (6800h),a    ;Set proper bank on second half of page 1
     ld (7000h),a    ;To prevent ROM from initializing again on page 2
     endif
 
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
     ld a,ROM_BANK_0+80h
     ld (ROM_BANK_SWITCH),a
     endif
@@ -4372,7 +4372,7 @@ A57D6:	ld	(hl),0C9H
 	ld	(XF365+0),a
 	ld	(XF365+1),hl		; read primairy slotregister entry
 	ld	a,006H
-    if INVERT_CTRL_KEY = 1
+    if INVERT_CTRL_KEY
     call    SNSMAT_AND_INVERT_CTRL
     else
 	call	SNSMAT
@@ -8646,7 +8646,7 @@ A7397:	call	XF36B			; enable ram on page 1
 ; Patches and moved code
 ; -----------------------------------------------------------------------------
 
-    if INVERT_CTRL_KEY = 1
+    if INVERT_CTRL_KEY
 SNSMAT_AND_INVERT_CTRL:
     call SNSMAT
     xor 2

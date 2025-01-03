@@ -37,7 +37,109 @@ DSKIO_STACK_SPACE: equ 32
 
 DSKIO_IMPL:
 
-    if DEBUG_DSKIO=1
+    jr nc,DSKIO_IMPL_DO
+    call DSKIO_IMPL_DO
+    ld b,0
+    ret
+DSKIO_IMPL_DO:
+
+    if USE_ROM_AS_DISK
+
+    ; In ROM disk mode writing is not supported 
+    ; and reading is done by individual sectors.
+
+    jr nc,DSKIO_IMPL2
+    xor a   ;Write protected error
+    scf
+    ld b,0
+    ret
+DSKIO_IMPL2:
+
+    else
+
+    ; If single sided disk, do transfer by individual sectors
+    ; unless first and last sector are on the same track
+    ; (dividing both by 9 yields the same value).
+
+    push af
+    call IS_SINGLE_SIDED
+    jr z,DSKIO_IMPL3
+    pop af
+    jr DSKIO_IMPL5
+DSKIO_IMPL3:
+
+    push bc
+    push hl
+    push de
+    ex de,hl
+    call DIV9 ;A  = HL/9 = first sector track
+    pop hl    ;HL = first sector
+    push hl
+    ld e,b
+    ld d,0
+    add hl,de
+    dec hl    ;HL = last sector
+    ld b,a    ;B = first sector track
+    call DIV9 ;A = last sector track
+    cp b
+    pop de
+    pop hl
+    pop bc
+    jr nz,DSKIO_IMPL4
+
+    pop af
+    jr DSKIO_IMPL5
+
+DSKIO_IMPL4:
+    pop af
+
+    endif
+
+    ;di
+    ;call 0FFCFh
+
+    ld ix,0  ;Count of transferred sectors
+DSKIO_IMPLOOP:
+    push af
+    push bc
+	push de
+	push hl
+    push ix
+    ld b,1
+	call DSKIO_IMPL5
+    jr c,DSKIO_IMPLOOP_ERR
+    pop  ix
+	pop  hl
+	inc  h
+	inc  h
+	pop  de
+	inc  de
+	pop  bc
+    inc ix
+    pop  af
+	djnz DSKIO_IMPLOOP  ;DJNZ preserves the carry flag
+
+    ;call 0FFD4h
+    ;ei
+
+    ld b,ixl
+    xor a
+
+    ret
+
+DSKIO_IMPLOOP_ERR:
+    pop ix
+    pop hl
+    pop de
+    pop bc
+    ld b,c
+    inc sp  ;Remove pushed AF without popping it
+    inc sp
+    ret
+
+DSKIO_IMPL5:
+
+    if DEBUG_DSKIO
     call DO_DEBUG_DSKIO
     endif
 
@@ -65,7 +167,7 @@ _DSKIO_OK_UNIT:
     pop de
     pop hl
     ld a,12
-    ret c   ;No device is connected
+    jr c,_DSKIO_ERR_PARAM   ;No device is connected
 
     call WK_GET_STORAGE_DEV_FLAGS
     jp nz,_DSKIO_IMPL_STDEV
@@ -90,6 +192,9 @@ _DSKIO_OK_UNIT:
     pop de
     pop hl
     ret c
+
+    call IS_SINGLE_SIDED
+    call z,ADJUST_SECTOR_NUMBER
 
     ld ix,-DSKIO_STACK_SPACE
     add ix,sp
@@ -291,7 +396,11 @@ _DSKIO_DO_SECTOR_TX:
     ld a,1  ;Retry "media changed"
 
     push ix
+    if USE_ROM_AS_DISK
+    call READ_DATA_FROM_ROM
+    else
     call USB_EXECUTE_CBI_WITH_RETRY
+    endif
     pop ix
 
     or a
@@ -299,20 +408,23 @@ _DSKIO_DO_SECTOR_TX:
     scf
     ret nz   ;Return "other error" on USB error
 
+_DSKIO_DO_SECTOR_TX_2:
+    ld a,d
+    or a
+    jp nz,ASC_TO_ERR
+
     ld a,(ix)
     cp 2Ah
-    jr z,_DSKIO_DO_SECTOR_TX_2
+    ld a,0
+    ret z
+
     ld a,b
     cp 2
     ld a,12
     ret c  ;Return "other error" if no whole sector was read
 
-_DSKIO_DO_SECTOR_TX_2:
-    ld a,d
-    or a
-    ret z   ;Success if ASC = 0
-
-    jp ASC_TO_ERR
+    xor a   ;Success if ASC = 0 and whole sector was transferred
+    ret
 
 _UFI_READ_SECTOR_CMD:
     db 28h, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
@@ -321,12 +433,131 @@ _UFI_READ_SECTOR_CMD:
 ;    db 2Ah, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0   ;bytes 4 and 5 = sector number, byte 8 = transfer length
 
 CALL_XFER:
+    push af
     push ix
+    ld a,(XFER)
+    cp 0C9h
+    jr z,CALL_OWN_XFER
+
     ld iy,ROM_BANK_0
     ld ix,XFER
     call CALL_BANK
     pop ix
+    pop af
     ret
+
+CALL_OWN_XFER:
+    ld ix,-(OWN_XFER_END-OWN_XFER)
+    add ix,sp
+    ld sp,ix
+
+	PUSH	HL
+	PUSH	DE
+	PUSH	BC
+    push ix
+    pop de
+    ld hl,OWN_XFER
+    ld bc,OWN_XFER_END-OWN_XFER
+    ldir
+
+    ld iy,CALL_OWN_XFER_END
+    push iy     ;Return address after "jp (ix)"
+    push ix
+    ld ix,A402D ;Get my slot number
+    ld iy,ROM_BANK_0
+	CALL	CALL_BANK   ;Get my own slot
+    pop ix
+    jp (ix)
+
+CALL_OWN_XFER_END:
+    ld ix,OWN_XFER_END-OWN_XFER
+    add ix,sp
+    ld sp,ix
+
+    pop ix
+    pop af
+    ret
+
+OWN_XFER:
+    pop iy  ;Return address
+    push af ;Save old slot number
+	LD	H,40H
+	LD	A,(RAMAD1)
+	CALL	ENASLT
+    pop af
+	POP	BC
+	POP	DE
+	POP	HL
+	LDIR
+    push iy
+	LD	H,40H
+	CALL	ENASLT
+	RET
+OWN_XFER_END:
+
+
+    if USE_ROM_AS_DISK
+
+; Read sector data from ROM, which is supposed to contain a .DSK file
+; starting at block 4 (only ASCII 8 is supported)
+;
+; Input: IX = CBI command that was supposed to be executed,
+;             must be a "read" command (28h); sector number is
+;             at positions 4 and 5 in big endian.
+;        DE = Transfer address
+
+READ_DATA_FROM_ROM:
+    ld a,(ix)
+    cp 28h
+    ld a,1
+    ret nz
+
+    push de     ;Save transfer address
+
+    ld h,(ix+4)
+    ld l,(ix+5) ;HL = sector number
+
+    ;There are 16 sectors per 8K ROM block.
+    ;Divide sector number by 16 and add 4
+    ;to get the ROM block number.
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+
+    ld bc,4
+    add hl,bc
+    ex de,hl   ;Now E = ROM block number
+
+    ;Sector address within ROM block is
+    ;((sec num & 15) * 512) + 6000h
+    ld a,(ix+5)
+    and 15
+    ld h,a
+    ld l,0
+    add hl,hl
+    set 6,h
+    set 5,h     ;Now HL = sector address within ROM block
+
+    ld a,e
+    ld (6800h),a    ;Select ROM block
+    pop de
+    ld bc,512
+    ldir    ;Do transfer
+
+    ld a,3
+    ld (6800h),a    ;Restore original ROM block
+
+    xor a
+    ld bc,512   ;Bytes transferred
+    ld de,0     ;Fake successful ASC and ASCQ
+    ret
+
+    endif
 
 
     ;=== DSKIO for storage devices (mounted file) ===
@@ -559,10 +790,6 @@ _DSKIO_IMPL_POPAF_RET_ERR:
     ;                1 if XFER is needed
 
 CHECK_XFER_IS_NEEDED:
-    ld a,(XFER)
-    cp 0C9h
-    ret z   ;Sanity check: we can't use XFER if it isn't enabled
-
     bit 7,d
     scf
     ccf
@@ -583,6 +810,117 @@ CHECK_XFER_IS_NEEDED:
     cp 40h  ;If transfer starts at <4000h, it must end at <4000h for direct transfer
     ccf
     ret
+
+
+; Is the disk (or we must consider it) single sided?
+; Input:  C = Media ID (used only in FDD mode 0)
+; Output: Z if single side disk, NZ if double sided disk
+
+IS_SINGLE_SIDED:
+    push hl
+    push de
+    push bc
+    call WK_GET_MISC_FLAGS
+    pop bc
+    pop de
+    pop hl
+    and 110b
+    cp 10b
+    ret z      ;01x: single sided
+    and 100b   ;1xx: double sided
+    ret nz     ;00x: look at media ID byte
+
+    ld a,c
+    cp 0F0h
+    ret z
+    and 1
+    ret
+
+
+; Adjust the sector number to skip the tracks belonging to the second side,
+; this is needed for single side disks.
+;
+; Sectors are arranged in the following way in a double side disk:
+; First 9 sectors: track 0 of side 1
+; Next 9 sectors:  track 0 of side 2
+; Next 9 sectors:  track 1 of side 1
+; Next 9 sectors:  track 1 of side 2...
+;
+; The disk drive doesn't know about single sided disks so it will always
+; try to read sectors according to the above arrangement.
+; Thus if the disk is single sided, we need to adjust the sector number
+; so that the side 2 tracks are skipped.
+;
+; The adjustment formula is:
+; ((sector number / 9) * 9) * 2 + (sector number MOD 9)
+; 
+; Input:  B = Sector count
+;         DE = Sector number
+;         HL = Transfer address
+; Output: DE = Adjusted sector number
+; Preserves HL, BC
+
+ADJUST_SECTOR_NUMBER:
+    call DRIVE_RECOGNIZES_SS_DISK
+    ret z   ;The drive itself adjusts the sector number already
+
+    push hl     ;Save transfer address
+    push de     ;Save sector number
+
+    ex de,hl    ;HL = sector number
+    call DIV9   ;A = sector number / 9
+
+    ld l,a
+    ld h,0
+    ld e,a
+    ld d,h     ;HL = DE = sector number / 9
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ex de,hl   ;DE = (sector number / 9) * 9
+
+    pop hl     ;HL = sector number
+    push de    ;Save (sector number / 9) * 9
+    or a
+    sbc hl,de
+    ex de,hl   ;DE = sector number - ((sector number / 9) * 9) = (sector number MOD 9)
+    
+    pop hl     ;HL = (sector number / 9) * 9
+    add hl,hl  ;HL = ((sector number / 9) * 9) * 2
+    add hl,de  
+    ex de,hl   ;DE = ((sector number / 9) * 9) * 2 + (sector number MOD 9)
+
+    pop hl     ;Restore transfer address
+    ret
+
+
+; Division by nine, valid in the range 0-1440
+; By Ricardo Bittencourt
+; Input:  HL = sector number
+; Output: A = HL/9
+; Corrupts HL, DE
+
+DIV9:   INC     HL              ;  7    1
+        LD      D,H             ;  5    1
+        LD      E,L             ;  5    1
+        ADD     HL,HL           ;  12   1
+        ADD     HL,HL           ;  12   1
+        ADD     HL,HL           ;  12   1
+        SBC     HL,DE           ;  17   2
+        LD      E,0             ;  8    2
+        LD      D,L             ;  5    1
+        LD      A,H             ;  5    1
+        ADD     HL,HL           ;  12   1
+        ADD     HL,HL           ;  12   1
+        ADD     HL,DE           ;  12   1
+        ADC     A,E             ;  5    1
+        XOR     H               ;  5    1
+        AND     03FH            ;  8    2
+        XOR     H               ;  5    1
+        RLCA                    ;  5    1
+        RLCA                    ;  5    1
+        RET            ; total  = 157  22 
 
 
     ;=== Handle possible disk image file change ===
@@ -706,6 +1044,12 @@ DSKCHG_IMPL:
     ld a,12
     ccf
     ret c
+
+    if USE_ROM_AS_DISK
+    xor a
+    ld b,1
+    ret
+    endif
 
     push hl
     call USB_CHECK_DEV_CHANGE
@@ -899,7 +1243,7 @@ GETDPBEND:
 
 ;Debug DSKIO
 
-    if DEBUG_DSKIO=1
+    if DEBUG_DSKIO
 
 CHGCLR: equ 0062h
 INIPLT: equ 0141h

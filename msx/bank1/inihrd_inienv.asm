@@ -36,7 +36,7 @@ INIHRD_IMPL:
 
 INIENV_IMPL:
 
-    if WAIT_KEY_ON_INIT = 1
+    if WAIT_KEY_ON_INIT
     ld hl,INIHRD_NEXT
     push hl
     endif
@@ -44,8 +44,12 @@ INIENV_IMPL:
     xor a
     call WK_SET_LAST_REL_DRIVE
 
+    if USE_ROM_AS_DISK = 0
     call VERBOSE_RESET
+    endif
+    
     ld b,30
+    ei
 DELAY_AFTER_PRINT:
     halt
     djnz DELAY_AFTER_PRINT

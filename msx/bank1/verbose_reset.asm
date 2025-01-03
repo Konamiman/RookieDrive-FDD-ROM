@@ -70,51 +70,6 @@ _HW_RESET_TRY_OK:
     ld hl,NODEV_S
     jp z,PRINT
 
-    ;Experiments with hubs, please ignore
-    if 0
-
-    ld hl,HUB_FOUND_S
-    call PRINT
-    ld a,2
-    call HW_SET_ADDRESS
-    ld a,2
-    ld b,1
-    call HW_SET_CONFIG
-    ld hl,CMD_PORT_POWER
-    ld de,0
-    ld a,2
-    ld b,64
-    call HW_CONTROL_TRANSFER
-    add "0"
-    call CHPUT
-    ld hl,CMD_PORT_RESET
-    ld de,0
-    ld a,2
-    ld b,64
-    call HW_CONTROL_TRANSFER
-    add "0"
-    call CHPUT
-
-    halt
-    halt
-    halt
-    halt
-    halt
-
-    xor a
-    call HW_GET_DEV_DESCR
-    add "0"
-    call CHPUT
-    jr HUBDONE
-
-CMD_PORT_POWER:
-    db  00100011b, 3, 8, 0, 1, 0, 0, 0
-CMD_PORT_RESET:
-    db  00100011b, 3, 4, 0, 1, 0, 0, 0
-HUBDONE:
-
-    endif
-
     ld b,5
 _TRY_USB_INIT_DEV:
     push bc
@@ -144,7 +99,7 @@ _TRY_USB_INIT_DEV_OK:
     call PRINT
     jp PRINT_DEVICE_INFO
 
-    if WAIT_KEY_ON_INIT = 1
+    if WAIT_KEY_ON_INIT
 INIHRD_NEXT:
     jp CHGET
     endif
@@ -283,9 +238,13 @@ PRINT_ERROR:
 
 ROOKIE_S:
 	db "Rookie Drive NestorBIOS v2.1",13,10
-	db "(c) Konamiman 2018-2022",13,10
+	db "(c) Konamiman 2025",13,10
 	db 13,10
+    if USE_ROM_AS_DISK
+    db "Running in ROM disk mode",13
+    else
     db "Initializing device...",13
+    endif
 	db 0
 
 NOHARD_S:
