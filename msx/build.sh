@@ -1,10 +1,11 @@
 VERSION=2.1
 SRC_PATH=$(dirname "$0")
 SRC_FILE=${SRC_PATH}/rookiefdd.asm
-BASE_DEST_FILE=${SRC_PATH}/bin/rookiefdd${VERSION}
+DEST_DIR=${SRC_PATH}/bin
+BASE_DEST_FILE=${DEST_DIR}/rookiefdd${VERSION}
 N80_ARGS="--direct-output-write"
 
-mkdir -p $BIN_PATH
+mkdir -p $DEST_DIR
 
 echo RookieDrive FDD ROM version $VERSION
 echo
