@@ -1313,18 +1313,49 @@ BM_PRINT_CUR_DIR:
     call CHPUT
 
     ld a,(iy+BM_CUR_DIR_LENGTH)
-    cp 40
+    cp 39
     jr c,_BM_PRINT_CUR_DIR_DIRECT
 
     ld hl,BM_DOTS_BAR_S
     call PRINT
 
+    ; Skip leading slash in the last directory part, then print it
     call BM_GET_LAST_DIR_PNT
-    call PRINT
-    jr _BM_PRINT_CUR_DIR_END
+    jr _BM_PRINT_CUR_DIR_TRUNC
 
 _BM_PRINT_CUR_DIR_DIRECT:
     call BM_GET_CUR_DIR_ADD
+_BM_SKIP_LEADING_SLASH:
+    ld a,(hl)
+    cp "/"
+    jr nz,_BM_PRINT_CUR_DIR_PRINT
+    inc hl
+    jr _BM_SKIP_LEADING_SLASH
+
+_BM_PRINT_CUR_DIR_PRINT:
+    ld a,(hl)
+    or a
+    jr z,_BM_PRINT_CUR_DIR_END  ; If empty, done (just "/")
+
+    ; Print whatever is left
+    call PRINT
+    jr _BM_PRINT_CUR_DIR_END
+
+_BM_PRINT_CUR_DIR_TRUNC:
+    ; By default, BM_GET_LAST_DIR_PNT leaves HL pointing 
+    ; at the final name in the path, but let's skip slashes just in case
+
+_BM_SKIP_LEADING_SLASH_2:
+    ld a,(hl)
+    cp "/"
+    jr nz,_BM_PRINT_CUR_DIR_TRUNC_PRINT
+    inc hl
+    jr _BM_SKIP_LEADING_SLASH_2
+
+_BM_PRINT_CUR_DIR_TRUNC_PRINT:
+    ld a,(hl)
+    or a
+    jr z,_BM_PRINT_CUR_DIR_END  ; If empty, done (just "/.../")
     call PRINT
 
 _BM_PRINT_CUR_DIR_END:
@@ -1736,7 +1767,6 @@ _BM_CALC_DIR_LEVEL_END:
 
     ret
 
-
 ;--- Try opening the initial directory
 ;    Output: A = 0 if ok, 1 if error
 
@@ -1834,7 +1864,7 @@ BM_RESETTING_S:
     db "Resetting computer...",0
 
 BM_DOTS_BAR_S:
-    db "/.../",0
+    db ".../",0
 
 BM_DOTDOT_S:
     db "..",0
