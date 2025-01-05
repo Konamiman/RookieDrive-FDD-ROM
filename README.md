@@ -16,11 +16,7 @@ Since version 2.1 using a USB floppy disk drive via an USB hub is supported. Som
 
 ## Compiling
 
-To compile this ROM you can use [Sjasm](https://github.com/Konamiman/sjasm). Adjust the configuration flags as desired in [the config.asm file](/msx/config.asm) and run:
-
-    sjasm rookiefdd.asm rookiefdd.rom
-
-Then flash `rookiefdd.rom` in your Rookie Drive and you're all set.
+To compile this ROM you need [Nestor80](https://github.com/Konamiman/Nestor80). Assemble the `rookiefdd.asm` file following the instructions in the header of [the file itself](/msx/rookiefdd.asm), then burn the generated `rookiefdd.rom` file in your Rookie Drive and you're all set.
 
 Alternatively, under Linux and WSL you can use the `build.sh` script to generate all the possible variants (with/without inverted CTRL key, disabling other kernels by default, and using the alternative Z80 ports) inside a `bin` directory.
 

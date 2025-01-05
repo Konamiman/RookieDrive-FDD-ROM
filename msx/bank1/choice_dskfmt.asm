@@ -27,6 +27,11 @@
 ; -----------------------------------------------------------------------------
 
 CHOICE_IMPL:
+    if USE_ROM_AS_DISK
+    ld hl,0
+    ret
+    endif
+
     call WK_GET_STORAGE_DEV_FLAGS
     ld hl,0
     ret nz
@@ -49,6 +54,12 @@ CHOICE_IMPL:
 ; -----------------------------------------------------------------------------
 
 DSKFMT_IMPL:
+    if USE_ROM_AS_DISK
+    ld a,16
+    scf
+    ret
+    endif
+
     ld c,a
     ld a,d
     call CHECK_SAME_DRIVE
@@ -64,21 +75,22 @@ DSKFMT_IMPL:
 
     dec c
 
-    ;Now C = bit 0: 0 for full format, 1 for quick format
-    ;        bit 1: 0 for 720K, 1 for 1440K
+    ;Now C = bit 0  : 0 for full format, 1 for quick format
+    ;        bit 1,2: 00 for 360K, 01 for 720K, 10 for 1440K
 
     rr c
+    ld a,c
     jr c,_DSKFMT_QUICK
 
 _DSKFMT_FULL:
-    push bc
-    rr c
+    push af
+    and 3
     call PHYSICAL_FORMAT
-    pop bc
+    pop af
     jr c,_DSKFMT_END_ERR
 
 _DSKFMT_QUICK:
-    rr c
+    and 3
     call LOGICAL_FORMAT
     jr c,_DSKFMT_END_ERR
     ret
@@ -100,7 +112,7 @@ _DSKFMT_END_ERR2:
 ; ----------------------------------------------------------------------------
 ; PHYSICAL_FORMAT
 ; ----------------------------------------------------------------------------
-; Input:  Cy = 0 for 720K disk, 1 for 1.44M disk
+; Input:  A  = 0 for 360K, 1 for 720K, 2 for 1440K
 ; Output: Cy = 0 if ok
 ;         Cy = 1 and A=DSKFMT error code on error
 
@@ -124,8 +136,12 @@ _PHYSICAL_FORMAT:
 
     endif
 
+    or a
+    jp z,_PHYSICAL_FORMAT_360K
+
     ld hl,_UFI_FORMAT_UNIT_DATA_720K_SIDE_0
-    jr nc,_PHYSICAL_FORMAT_2
+    dec a
+    jr z,_PHYSICAL_FORMAT_2
     ld hl,_UFI_FORMAT_UNIT_DATA_1440K_SIDE_0
 _PHYSICAL_FORMAT_2:
 
@@ -136,9 +152,10 @@ _PHYSICAL_FORMAT_2:
 
     ;Usually devices implement single track formatting only,
     ;so by default we'll format all the tracks one by one in a loop.
-    ;However the single all tracks format command will be used
+    ;However the format all tracks format command will be used
     ;if SHIFT is pressed (together with any other key)
     ;when the "Strike a key when ready" command is presented.
+    ;For 360K format we always do the track by track formatting.
 
 _PHYSICAL_FORMAT_DO_ALL_TRACKS:
     ld bc,24
@@ -236,6 +253,23 @@ _PHYSICAL_FORMAT_NEXT_TRACK:
     jr c,_PHYSICAL_FORMAT_TRACK_LOOP
     ret
 
+    ;360K: we format only the first side of the disk
+
+_PHYSICAL_FORMAT_360K:
+    ld ix,-_PHYSICAL_FORMAT_STACK_SPACE
+    add ix,sp
+    ld sp,ix
+
+    push ix
+    pop de
+    ld hl,_UFI_FORMAT_UNIT_CMD
+    ld bc,12
+    ldir
+
+    ld hl,_UFI_FORMAT_UNIT_DATA_720K_SIDE_0
+    call _PHYSICAL_FORMAT_ONE_SIDE
+    jp _PHYSICAL_FORMAT_END
+
 
 _UFI_FORMAT_UNIT_CMD:
     db 4, 17h, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0
@@ -271,14 +305,17 @@ _UFI_FORMAT_UNIT_DATA_1440K_ALL_TRACKS:
 ; under which it exists, but this is not a perfect world); in DOS2 mode
 ; the standard 9 sectors/FAT and 1 sector/cluster format will be applied.
 ; ----------------------------------------------------------------------------
-; Input:  Cy = 0 for 720K disk
-;              1 for 1.44M disk
+; Input:  A  = 0 for 360K, 1 for 720K, 2 for 1440K
 ; Output: Cy = 0 if ok
 ;         Cy = 1 and A=DSKFMT error code on error
 
 LOGICAL_FORMAT:
+    ld hl,BOOT_PARAMETERS_360K
+    or a
+    jr z,_LOGICAL_FORMAT_DO
     ld hl,BOOT_PARAMETERS_720K
-    jr nc,_LOGICAL_FORMAT_DO
+    dec a
+    jr z,_LOGICAL_FORMAT_DO
     ld hl,BOOT_PARAMETERS_1440K_DOS1
     ld a,(DOSVER)   ;We shouldn't do this but :shrug:
     or a
@@ -436,6 +473,9 @@ BOOT_SECTOR_END:
 ;+8: Media ID
 ;+9: Sectors per FAT
 ;+11: Sectors per track
+
+BOOT_PARAMETERS_360K:
+	db	02h,01h,00h,02h,70h,00h,0D0h,02h,0F8h,02h,00h,09h
 
 BOOT_PARAMETERS_720K:
 	db	02h,01h,00h,02h,70h,00h,0A0h,05h,0F9h,03h,00h,09h

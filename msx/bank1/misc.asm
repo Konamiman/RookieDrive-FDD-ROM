@@ -56,6 +56,12 @@ _ASC_TO_ERR:
 ;			FF disk changed
 
 TEST_DISK:
+    if USE_ROM_AS_DISK
+    xor a
+    ld b,1
+    ret
+    endif
+
     call _RUN_TEST_UNIT_READY
     ret c
 

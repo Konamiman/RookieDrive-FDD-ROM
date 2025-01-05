@@ -41,6 +41,11 @@ USB_CLASS_HUB: equ 9
 ;              1 if not
 
 USB_CHECK_DEV_CHANGE:
+    if USE_ROM_AS_DISK
+    or a
+    ret
+    endif
+
     call HW_DEV_CHANGE
     jr c,_USB_CHECK_DEV_CHANGE_NO_DEV   ;Device present, but bus reset failed
 
@@ -104,6 +109,11 @@ _USB_CHECK_DEV_CHANGE_NO_DEV:
 USB_INIT_DEV_STACK_SPACE: equ 64
 
 USB_INIT_DEV:
+    if USE_ROM_AS_DISK
+    xor a
+    ret
+    endif
+
     ld ix,-USB_INIT_DEV_STACK_SPACE
     add ix,sp
     ld sp,ix
@@ -489,9 +499,13 @@ _USB_HUB_PORT_LOOP:
     call _USB_DO_HUB_CMD
     jp nz,_USB_HUB_INIT_ERR ;An error here means that the port doesn't exist
 
-    halt
-    halt
-    halt    ;Max reset time for a USB hub port is 20ms, that'll be enough
+    ;Max reset time for a USB hub port is 20ms
+    ld bc,2000
+_USB_HUB_WAIT_RESET:
+    dec bc
+    ld a,b
+    or c
+    jr nz,_USB_HUB_WAIT_RESET
 
     ;* Try to get the device descriptor of the actual device,
     ;  just to see if there's a device at all
@@ -734,7 +748,7 @@ _USB_DATA_IN_OK:
 
 
 ; -----------------------------------------------------------------------------
-; USB_DATA_OUT_TRANSFER: Perform a USB data IN transfer
+; USB_DATA_OUT_TRANSFER: Perform a USB data OUT transfer
 ;
 ; This routine differs from HW_DATA_OUT_TRANSFER in that:
 ;
@@ -824,12 +838,11 @@ USB_CLEAR_ENDPOINT_HALT:
     ld sp,ix
     push hl ;Was A
 
-    ex de,hl
-    push de
+    push ix
+    pop de
     ld hl,USB_CMD_CLEAR_ENDPOINT_HALT
     ld bc,8
     ldir
-    pop ix
     ld b,a
     call WK_GET_EP_NUMBER
     ld (ix+4),a
@@ -1008,6 +1021,11 @@ _USB_ECBIR_POPALL_END_NZ:
 USB_EXECUTE_CBI_STACK_SPACE: equ 8+18
 
 USB_EXECUTE_CBI:
+    if USE_ROM_AS_DISK
+    ld a,1
+    ret
+    endif
+
     push af
     pop iy
     ld ix,-USB_EXECUTE_CBI_STACK_SPACE
@@ -1037,7 +1055,7 @@ USB_EXECUTE_CBI:
     pop ix
     cp USB_ERR_STALL
     ld de,0 ;ASC+ASCQ in case we return now
-    jr nz,_USB_EXE_CBI_END  ;Return on succes or USB error other than stall
+    jr nz,_USB_EXE_CBI_END  ;Return on success or USB error other than stall
 
 _USB_EXECUTE_REQUEST_SENSE:
     push bc ;Data actually transferred
@@ -1187,3 +1205,68 @@ CBI_ADSC:
 
 UFI_CMD_REQUEST_SENSE:
     db 3, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0
+
+
+; -----------------------------------------------------------------------------
+; DRIVE_RECOGNIZES_SS_DISK: Check if the drive handles single sided disks transparently
+;
+; Although not covered by the UFI standard, apparently some USB floppy disk drives
+; detect that a disk that in principle formatted as double sided, double density (720K)
+; has actually been formatted as single sided (360K), and performs the required
+; sector number adjustment (see ADJUST_SECTOR_NUMBER) by itself. One such drive
+; was found while developing this code, it seems to decide whether a given disk
+; is single sided or not by reading sector 0 and looking at the sector count
+; (the first time the disk is accessed).
+;
+; Again, this is not standard behavior, so in principle there's no documented way
+; to check if the drive has recognized a particular disk as single sided
+; (and we need to know so that we do the sector number adjustment ourselves or not).
+; However, in the drive we identified as compatible with this behavior it seems
+; that if a MODE SENSE command is executed requesting the "Flexible Disk Page"
+; information block, the "Number of heads" field is returned as 1 for disks
+; recognized as single sided (the UFI standard says that this field should
+; always be 2). So our best bet is to to assume that any drive supporting
+; built-in sector number adjustment for single sided disks will expose
+; the same behavior :shrug:.
+; -----------------------------------------------------------------------------
+; Input:  -
+; Output: Z if the the drive handles single sided disks transparently, NZ otherwise
+
+DRIVE_RECOGNIZES_SS_DISK:
+    push hl
+    push de
+    push bc
+
+    ld ix,-13 ;8 bytes of "Mode Parameter Header", then 5 bytes of "Flexible Disk Page"
+    add ix,sp
+    ld sp,ix
+
+    push ix
+    pop de
+    push ix
+    ld hl,UFI_CMD_MODE_SENSE
+    ld bc,13
+    or a
+    call USB_EXECUTE_CBI
+    pop ix
+    or a
+    jr nz,_DRIVE_RECOGNIZES_SS_DISK_END ;On USB error just assume "no"
+    ld a,d
+    or a
+    jr nz,_DRIVE_RECOGNIZES_SS_DISK_END ;Same on CBI command error
+
+    ld a,(ix+12)   ;5th byte of "Flexible Disk Page" = Number of heads, 1 = single sided disk recognized
+    dec a
+
+_DRIVE_RECOGNIZES_SS_DISK_END:
+    ld ix,13
+    add ix,sp
+    ld sp,ix
+
+    pop bc
+    pop de
+    pop hl
+    ret
+
+UFI_CMD_MODE_SENSE:
+    db 5Ah, 0, 5, 0, 0, 0, 0, 0, 13, 0, 0, 0 ;3rd byte is "Flexible Disk Page" code

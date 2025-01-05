@@ -59,7 +59,7 @@ _OEMSTA_UNKNOWN:
 
 OEM_COMMANDS:
 
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
     db "USBRESET2",0
     dw OEMC_USBRESET
     db "USBERROR2",0
@@ -74,6 +74,8 @@ OEM_COMMANDS:
     dw OEMC_USBMOUNTR
     db "USBFILES2",0
     dw OEMC_USBFILES
+    db "USBFDDMODE2",0
+    dw OEMC_USBFDDMODE
     else
     db "USBRESET",0
     dw OEMC_USBRESET
@@ -89,6 +91,8 @@ OEM_COMMANDS:
     dw OEMC_USBMOUNTR
     db "USBFILES",0
     dw OEMC_USBFILES
+    db "USBFDDMODE",0
+    dw OEMC_USBFDDMODE
     endif
 
     db "USBHELP",0
@@ -105,7 +109,7 @@ OEMC_USBHELP:
 
 OEM_S_HELP:
     ;   ----------------------------------------
-    if USE_ALTERNATIVE_PORTS=1
+    if USE_ALTERNATIVE_PORTS
     db "_USBRESET2 - Re-initialize device",13,10
     db 13,10
     db "FDD device only:",13,10
@@ -126,6 +130,7 @@ OEM_S_HELP:
     db "_USBMOUNT2(0) - Mount default file",13,10
     db "_USBMOUNT2(n) - Mount nth file, 1-255",13,10
     db "_USBMOUNTR2(...) - Mount and reset",13,10
+    db "_USBFDDMODE2(n) - n=0: normal, 1/2: force 1DD/2DD mode",13,10 
     else
     db "_USBRESET - Re-initialize device",13,10
     db 13,10
@@ -147,6 +152,7 @@ OEM_S_HELP:
     db "_USBMOUNT(0) - Mount default file",13,10
     db "_USBMOUNT(n) - Mount nth file, 1-255",13,10
     db "_USBMOUNTR(...) - Mount and reset",13,10
+    db "_USBFDDMODE(n) - n=0: normal, 1/2: force 1DD/2DD mode",13,10 
     endif
     db 0
 
@@ -515,6 +521,65 @@ _OEM_USBMOUNT_END:
     pop hl
     inc hl
     ret
+
+
+    ;--- CALL USBFDDMODE - Print the current USB FDD mode
+    ;    CALL USBFDDMODE(0) - Set the default mode:
+    ;                         decide if the disk is 1DD or 2DD depending on the media ID byte
+    ;    CALL USBFDDMODE(1) - Assume all disks are 1DD
+    ;    CALL USBFDDMODE(2) - Assume all disks are 2DD
+OEMC_USBFDDMODE:
+    pop hl
+
+    dec hl
+    ld ix,CHRGTR
+    call OEM_CALBAS
+    ;or a
+    jr nz,_OEMC_USBFDDMODE_SET
+
+    push hl
+    ld ix,WK_GET_MISC_FLAGS
+    call OEM_CALL_BANK_1
+    rrca
+    and 3
+    add "0"
+    call CHPUT
+    or a
+    pop hl
+    ;inc hl
+    ret
+
+_OEMC_USBFDDMODE_SET:
+    cp '('
+    jp nz,THROW_SYNTAX_ERROR
+    inc hl
+    ld ix,GETBYT
+    call OEM_CALBAS
+    push af
+    dec hl
+    ld ix,CHRGTR
+    call OEM_CALBAS
+    cp ')'
+    jp nz,THROW_SYNTAX_ERROR
+    pop af
+    rlca
+    and 110b
+
+    push hl
+    push af
+    ld ix,WK_GET_MISC_FLAGS
+    call OEM_CALL_BANK_1
+    and 1001b
+    pop bc
+    or b
+    ld ix,WK_SET_MISC_FLAGS
+    call OEM_CALL_BANK_1
+    pop hl
+
+    inc hl
+    or a
+    ret
+
 
 
     ;--- CALL USBCD - Print the current directory

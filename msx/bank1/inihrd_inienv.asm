@@ -47,7 +47,7 @@ INIHRD_IMPL:
 
 INIENV_IMPL:
 
-    if WAIT_KEY_ON_INIT = 1
+    if WAIT_KEY_ON_INIT
     ld hl,INIHRD_NEXT
     push hl
     endif
@@ -55,7 +55,11 @@ INIENV_IMPL:
     xor a
     call WK_SET_LAST_REL_DRIVE
 
+    if USE_ROM_AS_DISK = 0
     call VERBOSE_RESET
+    endif
+    
+    ei
     ld b,30
     call DELAY_B
     call WK_GET_STORAGE_DEV_FLAGS

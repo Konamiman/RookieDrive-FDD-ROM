@@ -2,7 +2,29 @@
 ; By Konamiman, 2018
 ;
 ; This is the customization options file.
-; Flags are enabled with value 1 or disabled with value 0.
+; Flags are disabled when the value is 0 and enabled with any other value.
+; For debugging purposes you may make temporary changes directly to this file,
+; but a cleaner approach is to use the --define-symbols argument
+; when running Nestor80 (see rookiefdd.asm for an example).
+
+
+; -----------------------------------------------------------------------------
+; Configuration constant definition macro
+; -----------------------------------------------------------------------------
+
+; This macro defines a configuration flag/value if it hasn't been defined yet,
+; so the value will be the one defined here by default, but it can be overridden
+; by passing a --define-symbols argument to Nestor80.
+
+config_const: macro name,value
+    ifndef name
+        ifb <value>
+name: defl 0
+        else
+name: defl value
+        endif
+    endif
+endm
 
 
 ; -----------------------------------------------------------------------------
@@ -12,24 +34,25 @@
 ;Invert the behavior of the CTRL flag, so that
 ;the second "ghost" drive exists only if CTRL is pressed at boot time
 ;(this won't apply to the internal disk drive or other MSX-DOS kernels)
-INVERT_CTRL_KEY: equ 0
+config_const INVERT_CTRL_KEY
 
 ;When this flag is disabled, pressing SHIFT at boot time will disable
 ;all other MSX-DOS ROMs but not this one.
 ;When enabled, all other MSX-DOS ROMs will be disabled except if
 ;GRAPH is pressed at boot time.
-DISABLE_OTHERS_BY_DEFAULT: equ 0
+config_const DISABLE_OTHERS_BY_DEFAULT
 
 ;Use the alternative set of Z80 ports for accessing the CH376,
 ;if you want to use two Rookie Drives in the same computer
 ;one of them must use the normal ports and the other one
 ;must use the alternative ports
-USE_ALTERNATIVE_PORTS: equ 0
+config_const USE_ALTERNATIVE_PORTS
 
 ;Implement the "panic button":
 ;pressing CAPS+ESC will abort the current USB operation
 ;and reset the device
-IMPLEMENT_PANIC_BUTTON: equ 1
+config_const IMPLEMENT_PANIC_BUTTON,1
+
 
 ; -----------------------------------------------------------------------------
 ; Debugging switches
@@ -38,18 +61,24 @@ IMPLEMENT_PANIC_BUTTON: equ 1
 
 ;Enable this if you are Konamiman and you are using NestorMSX with
 ;the almigthy Arduino board that Xavirompe sent you 
-USING_ARDUINO_BOARD: equ 0
+config_const USING_ARDUINO_BOARD
 
 ;Enable to debug DSKIO calls: whenever DSKIO is called, text mode is enabled,
 ;the input parameters are printed, and system stops waiting for a key press
-DEBUG_DSKIO: equ 0
+config_const DEBUG_DSKIO
 
 ;Enable to wait for a key press after displaying the device information
 ;at boot time
-WAIT_KEY_ON_INIT: equ 0
+config_const WAIT_KEY_ON_INIT
 
 ;Enable to simulate a fake storage device connected to a USB port
-USE_FAKE_STORAGE_DEVICE: equ 0
+config_const USE_FAKE_STORAGE_DEVICE
+
+;Enable this to use a disk image file simulating a real floppy disk drive.
+;If this is enabled, the path of the disk image file needs to be set
+;in rookiefdd.asm, right after the "if USE_ROM_AS_DISK".
+;Also if this is enabled then the only supported mapper is ASCII 8.
+config_const USE_ROM_AS_DISK
 
 
 ; -----------------------------------------------------------------------------
@@ -57,17 +86,18 @@ USE_FAKE_STORAGE_DEVICE: equ 0
 ; -----------------------------------------------------------------------------
 
 ;The address to switch the ROM bank in the DOS2 mapper implemented by Rookie Drive
-ROM_BANK_SWITCH: equ 6000h
+config_const ROM_BANK_SWITCH,6000h
 
 ;Enable this if you are adapting this BIOS for hardware other than Rookie Drive
 ;and that hardware uses ASCII8 for ROM mapping.
 ;If you use any ROM mapper other than ASCII8 or DOS2 you will need to change
 ;the code, search usages of ROM_BANK_SWITCH for that.
-USE_ASCII8_ROM_MAPPER: equ 0
+config_const USE_ASCII8_ROM_MAPPER
 
 ;The ROM banks where all the code lives.
 ;You will need to change this only if you plan to somehow integrate this
 ;BIOS into a bigger ROM.
 ;Note that these refer to 16K banks, even in the case of using the ASCII8 mapper.
-ROM_BANK_0: equ 0
-ROM_BANK_1: equ 1
+config_const ROM_BANK_0,0
+config_const ROM_BANK_1,1
+

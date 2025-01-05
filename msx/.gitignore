@@ -8,4 +8,5 @@ bin/
 temp.*
 *.bak
 bin/
-
+*.DSK
+*.dsk
