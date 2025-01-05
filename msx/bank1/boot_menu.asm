@@ -1312,7 +1312,7 @@ BM_PRINT_CUR_DIR:
     call CHPUT
 
     ld a,(iy+BM_CUR_DIR_LENGTH)
-    cp 40
+    cp 39
     jr c,_BM_PRINT_CUR_DIR_DIRECT
 
     ld hl,BM_DOTS_BAR_S
