@@ -628,21 +628,22 @@ BM_DO_CONFIG_3:
 BM_DO_CONFIG_4:
     pop af
     or a
-    jr nz,BM_DO_CONFIG_ASK
+    jr nz,BM_DO_CONFIG_5
     set 1,(iy+BM_TEMP)
     ld hl,BM_CONFIG_UNSET_DEF_S
+    call PRINT
+    ld hl,BM_CONFIG_TWOCRLF_S
     call PRINT
 
     ;* Print "Enable/disable CAPS lit on file access"
 
-    ld hl,BM_CONFIG_TWOCRLF_S
-    call PRINT
+BM_DO_CONFIG_5:
     call DSK_TEST_CAPS_LIT
     or a
     ld hl,BM_CONFIG_ENABLE_8_S
-    jr z,BM_DO_CONFIG_5
+    jr z,BM_DO_CONFIG_6
     ld hl,BM_CONFIG_DISABLE_8_S
-BM_DO_CONFIG_5:
+BM_DO_CONFIG_6:
     call PRINT
     ld hl,BM_CONFIG_CAPS_LIT_S
     call PRINT
