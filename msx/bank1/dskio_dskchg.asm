@@ -1082,18 +1082,14 @@ _DSKCHG_IMPL_STDEV:
     cp 80h
     jp z,_DSKIO_IMPL_POPAF_RET_ERR  ;Storage device but no disk mounted
 
-    call MAYBE_CHANGE_DSK
+    ;For some reason calling MAYBE_CHANGE_DSK here sometimes causes a crash.
+    ;We'll just return "unknown" and let DSKIO handle the disk change.
 
     pop af
-    
-    call WK_GET_STORAGE_DEV_FLAGS
-    and 4
-    ld a,0
-    ld b,1  ;Unchanged
-    ret z
+
     call GETDPB_IMPL
     xor a
-    ld b,0FFh   ;Changed
+    ld b,0   ;Unknown
     ret
 
 
