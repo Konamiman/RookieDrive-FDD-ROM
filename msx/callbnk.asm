@@ -30,6 +30,11 @@
     ld (ROM_BANK_SWITCH),a
     inc a
     ld (6800h),a
+    elseif USE_KONAMISCC_ROM_MAPPER
+    sla a
+    ld (ROM_BANK_SWITCH),a
+    inc a
+    ld (7000h),a
     else
     ld (ROM_BANK_SWITCH),a
     endif
@@ -46,6 +51,11 @@
     ld (ROM_BANK_SWITCH),a
     inc a
     ld (6800h),a
+    elseif USE_KONAMISCC_ROM_MAPPER
+    sla a
+    ld (ROM_BANK_SWITCH),a
+    inc a
+    ld (7000h),a
     else
     ld (ROM_BANK_SWITCH),a
     endif
