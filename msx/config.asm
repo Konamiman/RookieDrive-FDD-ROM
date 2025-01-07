@@ -90,9 +90,8 @@ config_const USE_ROM_AS_DISK
 config_const ROM_BANK_SWITCH,6000h
 
 ;Enable this if you are adapting this BIOS for hardware other than Rookie Drive
-;and that hardware uses ASCII8 for ROM mapping.
-;Enable USE_KONAMISCC_ROM_MAPPER if the target is MSXUSB. Only enable one type
-;of mapper.
+;and that hardware uses ASCII8 for ROM mapping or enable USE_KONAMISCC_ROM_MAPPER
+;if the target is MSXUSB. Only enable one type of mapper accordling.
 ;If you use any ROM mapper other than ASCII8, KONAMI SCC or DOS2 you will need
 ;to change the code, search usages of ROM_BANK_SWITCH for that.
 config_const USE_ASCII8_ROM_MAPPER
