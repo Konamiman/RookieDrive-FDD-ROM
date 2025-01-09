@@ -237,7 +237,7 @@ PRINT_ERROR:
 ; Strings
 
 ROOKIE_S:
-	db "Rookie Drive NestorBIOS v2.1",13,10
+	db "Rookie Drive NestorBIOS v2.1.1",13,10
 	db "(c) Konamiman 2025",13,10
 	db 13,10
     if USE_ROM_AS_DISK
