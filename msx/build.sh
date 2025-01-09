@@ -1,4 +1,4 @@
-VERSION=2.1
+VERSION=2.1.1
 SRC_PATH=$(dirname "$0")
 SRC_FILE=${SRC_PATH}/rookiefdd.asm
 DEST_DIR=${SRC_PATH}/bin
