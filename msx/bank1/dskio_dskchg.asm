@@ -145,7 +145,7 @@ DSKIO_IMPL5:
 
     call CHECK_SAME_DRIVE
 
-    push af
+    push af ;Save drive and R/W flag
     cp 2
     jr nc,_DSKIO_ERR_PARAM
 
@@ -175,15 +175,6 @@ _DSKIO_OK_UNIT:
 
     ;=== DSKIO for floppy disk drives ===
 
-    ld a,b
-    pop bc
-    rrc c   ;Now C:7 = 0 to read, 1 to write
-    ld b,a
-
-    ;ld a,b
-    or a
-    ret z   ;Nothing to read
-
     push hl
     push de
     push bc
@@ -191,10 +182,22 @@ _DSKIO_OK_UNIT:
     pop bc
     pop de
     pop hl
-    ret c
+    jr nc,_DSKIO_TESTDISK_OK
+    pop hl  ;Drive and R/W flag
+    ret
 
+_DSKIO_TESTDISK_OK:
     call IS_SINGLE_SIDED
     call z,ADJUST_SECTOR_NUMBER
+
+    ld a,b
+    pop bc  ;Drive and R/W flag
+    rrc c   ;Now C:7 = 0 to read, 1 to write
+    ld b,a
+
+    ;ld a,b
+    or a
+    ret z   ;Nothing to read
 
     ld ix,-DSKIO_STACK_SPACE
     add ix,sp

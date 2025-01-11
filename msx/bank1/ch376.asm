@@ -125,6 +125,11 @@ HW_TEST:
     ret
     endif
 
+    if USE_ROM_AS_DISK
+    or a
+    ret
+    endif
+
     ld a,34h
     call _HW_TEST_DO
     scf
