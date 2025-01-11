@@ -4320,6 +4320,12 @@ A576F:
     ld (7000h),a    ;To prevent ROM from initializing again on page 2
     endif
 
+    if USE_KONAMISCC_ROM_MAPPER
+    ld a,ROM_BANK_0*2+1
+    ld (7000h),a    ;Set proper bank on second half of page 1
+    ld (9000h),a    ;To prevent ROM from initializing again on page 2
+    endif
+
     if USE_ALTERNATIVE_PORTS
     ld a,ROM_BANK_0+80h
     ld (ROM_BANK_SWITCH),a

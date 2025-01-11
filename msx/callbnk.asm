@@ -33,6 +33,12 @@
     else
     ld (ROM_BANK_SWITCH),a
     endif
+    if USE_KONAMISCC_ROM_MAPPER
+    sla a
+    ld (ROM_BANK_SWITCH),a
+    inc a
+    ld (7000h),a
+    endif
     pop af
     call CALL_IX
     ex (sp),hl  ;L=Previous bank
@@ -48,6 +54,12 @@
     ld (6800h),a
     else
     ld (ROM_BANK_SWITCH),a
+    endif
+    if USE_KONAMISCC_ROM_MAPPER
+    sla a
+    ld (ROM_BANK_SWITCH),a
+    inc a
+    ld (7000h),a
     endif
     pop af
     pop hl

@@ -85,14 +85,17 @@ config_const USE_ROM_AS_DISK
 ; ROM configuration
 ; -----------------------------------------------------------------------------
 
-;The address to switch the ROM bank in the DOS2 mapper implemented by Rookie Drive
+;The address to switch the ROM bank in the DOS2 mapper implemented.
+;Set it to 6000h if the target is Rookie Drive or 5000h if the target is MSXUSB
 config_const ROM_BANK_SWITCH,6000h
 
 ;Enable this if you are adapting this BIOS for hardware other than Rookie Drive
-;and that hardware uses ASCII8 for ROM mapping.
-;If you use any ROM mapper other than ASCII8 or DOS2 you will need to change
-;the code, search usages of ROM_BANK_SWITCH for that.
+;and that hardware uses ASCII8 for ROM mapping or enable USE_KONAMISCC_ROM_MAPPER
+;if the target is MSXUSB. Only enable one type of mapper accordling.
+;If you use any ROM mapper other than ASCII8, KONAMI SCC or DOS2 you will need
+;to change the code, search usages of ROM_BANK_SWITCH for that.
 config_const USE_ASCII8_ROM_MAPPER
+config_const USE_KONAMISCC_ROM_MAPPER
 
 ;The ROM banks where all the code lives.
 ;You will need to change this only if you plan to somehow integrate this
